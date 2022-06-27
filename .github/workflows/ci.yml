@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-native:
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest]
+        node-version: [14.x, 16.x, 18.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Set up Node.js ${{matrix.node-version}}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{matrix.node-version}}
+      - name: Build
+        run: npm install
+      - name: Test
+        run: npm test
+  build-wasm:
+    runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: 18.x
+      EMSDK_VERSION: 3.1.14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Set up Node.js ${{env.NODE_VERSION}}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{env.NODE_VERSION}}
+      - name: Set up Emscripten SDK ${{env.EMSDK_VERSION}}
+        uses: mymindstorm/setup-emsdk@v11
+        with:
+          version: ${{env.EMSDK_VERSION}}
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Build WebAssembly module
+        run: npm run build-wasm
+      - name: Upload build output
+        uses: actions/upload-artifact@v3
+        with:
+          name: wasm-gen
+          path: |
+            wasm/gen
+          if-no-files-found: error
+  test-wasm:
+    needs: build-wasm
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+        node-version: [14.x, 16.x, 18.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up Node.js ${{matrix.node-version}}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{matrix.node-version}}
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Download WebAssembly module
+        uses: actions/download-artifact@v3
+        with:
+          name: wasm-gen
+          path: wasm/gen
+      - name: Test
+        run: npm test

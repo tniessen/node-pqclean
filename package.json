@@ -1,0 +1,54 @@
+{
+  "name": "pqclean",
+  "version": "0.0.1-alpha",
+  "description": "Node.js bindings for all post-quantum implementations included in PQClean",
+  "main": "index.js",
+  "dependencies": {
+    "bindings": "^1.5.0",
+    "node-addon-api": "^5.0.0"
+  },
+  "devDependencies": {
+    "mceliece-nist": "^2.0.1",
+    "tape": "^5.5.3"
+  },
+  "scripts": {
+    "install": "npm run build-native || echo Compilation failed. You can use the module, but native bindings will not be available.",
+    "test": "node test",
+    "prepack": "npm run build-wasm",
+    "build-native": "node-gyp rebuild",
+    "build-wasm": "node scripts/build-wasm.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tniessen/node-pqclean.git"
+  },
+  "keywords": [
+    "pqclean",
+    "pqc",
+    "quantum",
+    "crypto",
+    "cryptography",
+    "asymmetric",
+    "kem",
+    "key",
+    "exchange"
+  ],
+  "author": "Tobias Nießen <tniessen@tnie.de>",
+  "license": "ISC",
+  "gypfile": true,
+  "bugs": {
+    "url": "https://github.com/tniessen/node-pqclean/issues"
+  },
+  "homepage": "https://github.com/tniessen/node-pqclean#readme",
+  "files": [
+    "README.md",
+    "binding.gyp",
+    "deps/PQClean/common",
+    "deps/PQClean/crypto_kem/*/clean",
+    "deps/PQClean/crypto_sign/*/clean",
+    "index.js",
+    "native/",
+    "package.json",
+    "wasm/"
+  ]
+}
