@@ -403,11 +403,17 @@ class KEM : public Napi::ObjectWrap<KEM> {
       return env.Undefined();
     }
 
-    if (info.Length() == 3 && info[2].IsFunction()) {
-      Napi::Function cb = info[2].As<Napi::Function>();
-      DecryptWorker* worker = new DecryptWorker(cb, impl, private_key.Data(), encrypted_key.Data());
-      worker->Queue();
-      return env.Undefined();
+    if (info.Length() == 3) {
+      if (info[2].IsFunction()) {
+        Napi::Function cb = info[2].As<Napi::Function>();
+        DecryptWorker* worker = new DecryptWorker(cb, impl, private_key.Data(), encrypted_key.Data());
+        worker->Queue();
+        return env.Undefined();
+      } else {
+        Napi::TypeError::New(env, "Third argument must be a function")
+            .ThrowAsJavaScriptException();
+        return env.Undefined();
+      }
     }
 
     Napi::Buffer<unsigned char> actual_key = Napi::Buffer<unsigned char>::New(env, impl->keySize);
@@ -577,6 +583,12 @@ class Sign : public Napi::ObjectWrap<Sign> {
       return env.Undefined();
     }
 
+    if (!info[0].IsTypedArray()) {
+      Napi::TypeError::New(env, "First argument must be a TypedArray")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
     Napi::Buffer<unsigned char> publicKey = info[0].As<Napi::Buffer<unsigned char>>();
     if (publicKey.Length() != impl->publicKeySize) {
       Napi::TypeError::New(env, "Invalid public key size")
@@ -584,7 +596,19 @@ class Sign : public Napi::ObjectWrap<Sign> {
       return env.Undefined();
     }
 
+    if (!info[1].IsTypedArray()) {
+      Napi::TypeError::New(env, "Second argument must be a TypedArray")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
     Napi::Buffer<unsigned char> message = info[1].As<Napi::Buffer<unsigned char>>();
+
+    if (!info[2].IsTypedArray()) {
+      Napi::TypeError::New(env, "Third argument must be a TypedArray")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
 
     Napi::Buffer<unsigned char> signature = info[2].As<Napi::Buffer<unsigned char>>();
     if (signature.Length() > impl->signatureSize) {

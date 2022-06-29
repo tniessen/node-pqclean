@@ -62,6 +62,14 @@ class KEM {
   #algorithm;
 
   constructor(algorithm) {
+    if (arguments.length !== 1) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (typeof algorithm !== 'string') {
+      throw new TypeError('First argument must be a string');
+    }
+
     if ((this.#algorithm = algorithms.kem.find(byName(algorithm))) == null) {
       throw new Error('No such implementation');
     }
@@ -92,7 +100,15 @@ class KEM {
   }
 
   keypair(callback) {
-    if (callback) {
+    if (arguments.length > 1) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (arguments.length === 1) {
+      if (typeof callback !== 'function') {
+        throw new TypeError('First argument must be a function');
+      }
+
       setImmediate(() => {
         let result;
         try {
@@ -123,6 +139,15 @@ class KEM {
   generateKey(publicKey, callback) {
     const { publicKeySize, keySize, encryptedKeySize } = this.#algorithm.properties;
 
+    if (arguments.length !== 1 && arguments.length !== 2) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (!ArrayBuffer.isView(publicKey)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('First argument must be a TypedArray');
+    }
+
     if (publicKey.byteLength !== publicKeySize) {
       throw new TypeError('Invalid public key size');
     }
@@ -144,7 +169,11 @@ class KEM {
         });
       };
 
-      if (callback) {
+      if (arguments.length === 2) {
+        if (typeof callback !== 'function') {
+          throw new TypeError('Second argument must be a function');
+        }
+
         const publicKeyContext = escapePublicKey();
         setImmediate(() => {
           let result;
@@ -165,8 +194,22 @@ class KEM {
   decryptKey(privateKey, encryptedKey, callback) {
     const { privateKeySize, keySize, encryptedKeySize } = this.#algorithm.properties;
 
+    if (arguments.length !== 2 && arguments.length !== 3) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (!ArrayBuffer.isView(privateKey)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('First argument must be a TypedArray');
+    }
+
     if (privateKey.byteLength !== privateKeySize) {
       throw new TypeError('Invalid private key size');
+    }
+
+    if (!ArrayBuffer.isView(encryptedKey)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('Second argument must be a TypedArray');
     }
 
     if (encryptedKey.byteLength !== encryptedKeySize) {
@@ -189,7 +232,11 @@ class KEM {
         });
       };
 
-      if (callback) {
+      if (arguments.length === 3) {
+        if (typeof callback !== 'function') {
+          throw new TypeError('Third argument must be a function');
+        }
+
         const inputContext = escapeInput();
         setImmediate(() => {
           let result;
@@ -216,6 +263,14 @@ class Sign {
   #algorithm;
 
   constructor(algorithm) {
+    if (arguments.length !== 1) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (typeof algorithm !== 'string') {
+      throw new TypeError('First argument must be a string');
+    }
+
     if ((this.#algorithm = algorithms.sign.find(byName(algorithm))) == null) {
       throw new Error('No such implementation');
     }
@@ -242,7 +297,15 @@ class Sign {
   }
 
   keypair(callback) {
-    if (callback) {
+    if (arguments.length > 1) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (arguments.length === 1) {
+      if (typeof callback !== 'function') {
+        throw new TypeError('First argument must be a function');
+      }
+
       setImmediate(() => {
         let result;
         try {
@@ -273,8 +336,22 @@ class Sign {
   sign(privateKey, message, callback) {
     const { privateKeySize, signatureSize } = this.#algorithm.properties;
 
+    if (arguments.length !== 2 && arguments.length !== 3) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (!ArrayBuffer.isView(privateKey)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('First argument must be a TypedArray');
+    }
+
     if (privateKey.byteLength !== privateKeySize) {
       throw new TypeError('Invalid private key size');
+    }
+
+    if (!ArrayBuffer.isView(message)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('Second argument must be a TypedArray');
     }
 
     return scopedAlloc(privateKeySize + message.byteLength, (inPtr, escapeInput) => {
@@ -300,7 +377,11 @@ class Sign {
         });
       };
 
-      if (callback) {
+      if (arguments.length === 3) {
+        if (typeof callback !== 'function') {
+          throw new TypeError('Third argument must be a function');
+        }
+
         const inputContext = escapeInput();
         setImmediate(() => {
           let result;
@@ -321,8 +402,27 @@ class Sign {
   verify(publicKey, message, signature, callback) {
     const { publicKeySize, signatureSize } = this.#algorithm.properties;
 
+    if (arguments.length !== 3 && arguments.length !== 4) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (!ArrayBuffer.isView(publicKey)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('First argument must be a TypedArray');
+    }
+
     if (publicKey.byteLength !== publicKeySize) {
       throw new TypeError('Invalid public key size');
+    }
+
+    if (!ArrayBuffer.isView(message)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('Second argument must be a TypedArray');
+    }
+
+    if (!ArrayBuffer.isView(signature)) {
+      // TODO: isView means ArrayBufferView, not TypedArray.
+      throw new TypeError('Third argument must be a TypedArray');
     }
 
     if (signature.byteLength > signatureSize) {
@@ -342,7 +442,11 @@ class Sign {
         return 0 === instance.exports[this.#algorithm.functions.verify](signaturePtr, signature.byteLength, messagePtr, message.byteLength, publicKeyPtr);
       };
 
-      if (callback) {
+      if (arguments.length === 4) {
+        if (typeof callback !== 'function') {
+          throw new TypeError('Fourth argument must be a function');
+        }
+
         const inputContext = escapeInput();
         setImmediate(() => {
           let result;

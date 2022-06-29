@@ -143,6 +143,62 @@ for (const algorithm of KEM.supportedAlgorithms) {
   });
 }
 
+test('KEM argument validation', (t) => {
+  t.throws(() => new KEM(), /number of arguments/,
+           'Constructor throws with no arguments');
+  for (const v of [undefined, {}, true, 123, 123n]) {
+    t.throws(() => new KEM(v), /First argument must be a string/,
+             `Constructor throws if first argument of type ${typeof v}`);
+  }
+  t.throws(() => new KEM('foo', 'bar'), /number of arguments/,
+           'Constructor throws if more than one argument');
+
+  const kem = new KEM(KEM.supportedAlgorithms[0]);
+  const fakePublicKey = new Uint8Array(kem.publicKeySize);
+  const fakePrivateKey = new Uint8Array(kem.privateKeySize);
+  const fakeEncryptedKey = new Uint8Array(kem.encryptedKeySize);
+
+  for (const v of [undefined, {}, true, 123, 123n, 'foo']) {
+    t.throws(() => kem.keypair(v), /First argument must be a function/,
+             `keypair throws if first argument of type ${typeof v}`);
+  }
+  t.throws(() => kem.keypair('foo', 'bar'), /number of arguments/,
+           'keypair throws if more than one argument');
+
+  t.throws(() => kem.generateKey(), /number of arguments/,
+           'generateKey throws with no arguments');
+  for (const v of [undefined, {}, true, 123, 123n, 'foo']) {
+    t.throws(() => kem.generateKey(v), /First argument must be a TypedArray/,
+             `generateKey throws if first argument of type ${typeof v}`);
+    t.throws(() => kem.generateKey(fakePublicKey, v),
+             /Second argument must be a function/,
+             `generateKey throws if second argument of type ${typeof v}`);
+  }
+  t.throws(() => kem.generateKey('foo', 'bar', 'baz'), /number of arguments/,
+           'generateKey throws if more than two arguments');
+
+  t.throws(() => kem.decryptKey(), /number of arguments/,
+           'decryptKey throws with no arguments');
+  t.throws(() => kem.decryptKey(fakePrivateKey), /number of arguments/,
+           'decryptKey throws with only one argument');
+  for (const v of [undefined, {}, true, 123, 123n, 'foo']) {
+    t.throws(() => kem.decryptKey(v, fakeEncryptedKey),
+             /First argument must be a TypedArray/,
+             `decryptKey throws if first argument of type ${typeof v}`);
+    t.throws(() => kem.decryptKey(fakePrivateKey, v),
+             /Second argument must be a TypedArray/,
+             `decryptKey throws if second argument of type ${typeof v}`);
+    t.throws(() => kem.decryptKey(fakePrivateKey, fakeEncryptedKey, v),
+             /Third argument must be a function/,
+             `decryptKey throws if third argument of type ${typeof v}`);
+  }
+  t.throws(() => kem.decryptKey(fakePrivateKey, fakeEncryptedKey, () => {}, 1),
+           /number of arguments/,
+           'decryptKey throws if more than three arguments');
+
+  t.end();
+});
+
 test('KEM should be compatible with mceliece-nist', (t) => {
   const { McEliece } = require('mceliece-nist');
   t.plan(1 + McEliece.supportedAlgorithms.length);
@@ -337,3 +393,70 @@ for (const algorithm of Sign.supportedAlgorithms) {
     wasAsync = true;
   });
 }
+
+test('Sign argument validation', (t) => {
+  t.throws(() => new Sign(), /number of arguments/,
+           'Constructor throws with no arguments');
+  for (const v of [undefined, {}, true, 123, 123n]) {
+    t.throws(() => new Sign(v), /First argument must be a string/,
+             `Constructor throws if first argument of type ${typeof v}`);
+  }
+  t.throws(() => new Sign('foo', 'bar'), /number of arguments/,
+           'Constructor throws if more than one argument');
+
+  const sign = new Sign(Sign.supportedAlgorithms[0]);
+  const fakePublicKey = new Uint8Array(sign.publicKeySize);
+  const fakePrivateKey = new Uint8Array(sign.privateKeySize);
+  const fakeSignature = new Uint8Array(sign.signatureSize);
+  const m = new Uint8Array(1);
+
+  for (const v of [undefined, {}, true, 123, 123n, 'foo']) {
+    t.throws(() => sign.keypair(v), /First argument must be a function/,
+             `keypair throws if first argument of type ${typeof v}`);
+  }
+  t.throws(() => sign.keypair('foo', 'bar'), /number of arguments/,
+           'keypair throws if more than one argument');
+
+  t.throws(() => sign.sign(), /number of arguments/,
+           'sign throws with no arguments');
+  t.throws(() => sign.sign('foo'), /number of arguments/,
+           'sign throws with only one argument');
+  for (const v of [undefined, {}, true, 123, 123n, 'foo']) {
+    t.throws(() => sign.sign(v, ''), /First argument must be a TypedArray/,
+             `sign throws if first argument of type ${typeof v}`);
+    t.throws(() => sign.sign(fakePrivateKey, v),
+             /Second argument must be a TypedArray/,
+             `sign throws if second argument of type ${typeof v}`);
+    t.throws(() => sign.sign(fakePrivateKey, m, v),
+             /Third argument must be a function/,
+             `sign throws if third argument of type ${typeof v}`);
+  }
+  t.throws(() => sign.sign('foo', 'bar', 'baz', 'qux'), /number of arguments/,
+           'sign throws if more than three arguments');
+
+  t.throws(() => sign.verify(), /number of arguments/,
+           'verify throws with no arguments');
+  t.throws(() => sign.verify(fakePublicKey), /number of arguments/,
+           'verify throws with only one argument');
+  t.throws(() => sign.verify(fakePublicKey, m), /number of arguments/,
+           'verify throws with only two arguments');
+  for (const v of [undefined, {}, true, 123, 123n, 'foo']) {
+    t.throws(() => sign.verify(v, m, fakeSignature),
+             /First argument must be a TypedArray/,
+             `verify throws if first argument of type ${typeof v}`);
+    t.throws(() => sign.verify(fakePublicKey, v, fakeSignature),
+             /Second argument must be a TypedArray/,
+             `verify throws if second argument of type ${typeof v}`);
+    t.throws(() => sign.verify(fakePublicKey, m, v),
+             /Third argument must be a TypedArray/,
+             `verify throws if third argument of type ${typeof v}`);
+    t.throws(() => sign.verify(fakePublicKey, m, fakeSignature, v),
+             /Fourth argument must be a function/,
+             `verify throws if fourth argument of type ${typeof v}`);
+  }
+  t.throws(() => sign.verify(fakePublicKey, m, fakeSignature, () => {}, 1),
+           /number of arguments/,
+           'verify throws if more than four arguments');
+
+  t.end();
+});
