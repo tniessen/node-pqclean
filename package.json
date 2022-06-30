@@ -12,7 +12,7 @@
     "tape": "^5.5.3"
   },
   "scripts": {
-    "install": "npm run build-native || echo Compilation failed. You can use the module, but native bindings will not be available.",
+    "install": "node scripts/install.mjs",
     "test": "node test",
     "prepack": "npm run build-wasm",
     "build-native": "node-gyp rebuild",
@@ -49,6 +49,7 @@
     "index.js",
     "native/",
     "package.json",
+    "scripts/install.mjs",
     "wasm/"
   ]
 }

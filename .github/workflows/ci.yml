@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: ${{matrix.node-version}}
       - name: Build
-        run: npm install
+        run: npm install --pqclean-backend=native
       - name: Test
         run: npm test
   build-wasm:
@@ -73,12 +73,12 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{matrix.node-version}}
-      - name: Install dependencies
-        run: npm install --ignore-scripts
       - name: Download WebAssembly module
         uses: actions/download-artifact@v3
         with:
           name: wasm-gen
           path: wasm/gen
+      - name: Install
+        run: npm install --pqclean-backend=wasm
       - name: Test
         run: npm test

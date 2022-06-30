@@ -10,10 +10,32 @@ encapsulation mechanisms and 53 digital signature algorithms.
 npm i pqclean
 ```
 
-During installation, node-pqclean will attempt to compile PQClean as a native
-addon for Node.js. If that fails, for example, because the operating system is
-unsupported, the package will continue with the installation, but only the
-WebAssembly backend will be available at runtime.
+By default, node-pqclean will attempt to compile PQClean as a native addon for
+Node.js. Only if that fails, for example, because necessary tools are not
+installed or because the operating system is unsupported, the package will
+continue with the installation, but only the WebAssembly backend will be
+available at runtime.
+
+**Because of the limited stack size on Windows (see [nodejs/node#43630][]), some
+algorithms are disabled when using the native addon on Windows.** If access to
+these algorithms is desired, keep reading.
+
+It is possible to customize the installation procedure through the use of an npm
+config variable `pqclean-backend`.
+
+* `pqclean-backend=prefer-native` (default) attempts to build the native addon
+  and only uses the WebAssembly backend if building the native addon fails.
+* `pqclean-backend=native` builds and uses the native addon only. If building
+  the native addon fails, the package installation fails as well.
+* `pqclean-backend=wasm` does not build the native addon. Only the WebAssembly
+  backend will be available at runtime. This option may be useful when loading
+  native addons poses a security risk.
+* `pqclean-backend=all-algorithms` behaves like the default (`prefer-native`)
+  on non-Windows systems. On Windows, where the native addon does not support
+  all algorithms, this behaves like `wasm`.
+
+You can read more about npm config variables
+[here](https://docs.npmjs.com/cli/v8/using-npm/config).
 
 ## Example
 
@@ -167,3 +189,4 @@ This project is distributed under the ISC license. Please check
 implementations.
 
 [PQClean]: https://github.com/PQClean/PQClean
+[nodejs/node#43630]: https://github.com/nodejs/node/issues/43630
