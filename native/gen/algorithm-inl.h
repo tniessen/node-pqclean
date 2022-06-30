@@ -107,11 +107,19 @@ extern "C" {
 
 }  // extern "C"
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
+#  define NODE_PQCLEAN_HAS_LARGE_STACK 0
+#else
+#  define NODE_PQCLEAN_HAS_LARGE_STACK 1
+#endif
+
 namespace pqclean {
 namespace kem {
 
-const std::array<Algorithm, 46>& algorithms() {
-  static const std::array<Algorithm, 46> all = {{
+constexpr unsigned int N_ALGORITHMS = NODE_PQCLEAN_HAS_LARGE_STACK ? 46 : 32;
+
+const std::array<Algorithm, N_ALGORITHMS>& algorithms() {
+  static const std::array<Algorithm, N_ALGORITHMS> all = {{
     {
       "firesaber",
       PQCLEAN_FIRESABER_CLEAN_CRYPTO_ALGNAME,
@@ -123,6 +131,7 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_FIRESABER_CLEAN_crypto_kem_enc,
       PQCLEAN_FIRESABER_CLEAN_crypto_kem_dec
     },
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "frodokem1344aes",
       PQCLEAN_FRODOKEM1344AES_CLEAN_CRYPTO_ALGNAME,
@@ -134,6 +143,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_FRODOKEM1344AES_CLEAN_crypto_kem_enc,
       PQCLEAN_FRODOKEM1344AES_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "frodokem1344shake",
       PQCLEAN_FRODOKEM1344SHAKE_CLEAN_CRYPTO_ALGNAME,
@@ -145,6 +156,7 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_FRODOKEM1344SHAKE_CLEAN_crypto_kem_enc,
       PQCLEAN_FRODOKEM1344SHAKE_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "frodokem640aes",
       PQCLEAN_FRODOKEM640AES_CLEAN_CRYPTO_ALGNAME,
@@ -167,6 +179,7 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_FRODOKEM640SHAKE_CLEAN_crypto_kem_enc,
       PQCLEAN_FRODOKEM640SHAKE_CLEAN_crypto_kem_dec
     },
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "frodokem976aes",
       PQCLEAN_FRODOKEM976AES_CLEAN_CRYPTO_ALGNAME,
@@ -178,6 +191,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_FRODOKEM976AES_CLEAN_crypto_kem_enc,
       PQCLEAN_FRODOKEM976AES_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "frodokem976shake",
       PQCLEAN_FRODOKEM976SHAKE_CLEAN_CRYPTO_ALGNAME,
@@ -189,6 +204,7 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_FRODOKEM976SHAKE_CLEAN_crypto_kem_enc,
       PQCLEAN_FRODOKEM976SHAKE_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "hqc-rmrs-128",
       PQCLEAN_HQCRMRS128_CLEAN_CRYPTO_ALGNAME,
@@ -299,6 +315,7 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_LIGHTSABER_CLEAN_crypto_kem_enc,
       PQCLEAN_LIGHTSABER_CLEAN_crypto_kem_dec
     },
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece348864",
       PQCLEAN_MCELIECE348864_CLEAN_CRYPTO_ALGNAME,
@@ -310,6 +327,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE348864_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE348864_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece348864f",
       PQCLEAN_MCELIECE348864F_CLEAN_CRYPTO_ALGNAME,
@@ -321,6 +340,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE348864F_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE348864F_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece460896",
       PQCLEAN_MCELIECE460896_CLEAN_CRYPTO_ALGNAME,
@@ -332,6 +353,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE460896_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE460896_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece460896f",
       PQCLEAN_MCELIECE460896F_CLEAN_CRYPTO_ALGNAME,
@@ -343,6 +366,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE460896F_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE460896F_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece6688128",
       PQCLEAN_MCELIECE6688128_CLEAN_CRYPTO_ALGNAME,
@@ -354,6 +379,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE6688128_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE6688128_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece6688128f",
       PQCLEAN_MCELIECE6688128F_CLEAN_CRYPTO_ALGNAME,
@@ -365,6 +392,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE6688128F_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE6688128F_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece6960119",
       PQCLEAN_MCELIECE6960119_CLEAN_CRYPTO_ALGNAME,
@@ -376,6 +405,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE6960119_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE6960119_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece6960119f",
       PQCLEAN_MCELIECE6960119F_CLEAN_CRYPTO_ALGNAME,
@@ -387,6 +418,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE6960119F_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE6960119F_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece8192128",
       PQCLEAN_MCELIECE8192128_CLEAN_CRYPTO_ALGNAME,
@@ -398,6 +431,8 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE8192128_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE8192128_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "mceliece8192128f",
       PQCLEAN_MCELIECE8192128F_CLEAN_CRYPTO_ALGNAME,
@@ -409,6 +444,7 @@ const std::array<Algorithm, 46>& algorithms() {
       PQCLEAN_MCELIECE8192128F_CLEAN_crypto_kem_enc,
       PQCLEAN_MCELIECE8192128F_CLEAN_crypto_kem_dec
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "ntruhps2048509",
       PQCLEAN_NTRUHPS2048509_CLEAN_CRYPTO_ALGNAME,
@@ -626,8 +662,10 @@ const std::array<Algorithm, 46>& algorithms() {
 
 namespace sign {
 
-const std::array<Algorithm, 53>& algorithms() {
-  static const std::array<Algorithm, 53> all = {{
+constexpr unsigned int N_ALGORITHMS = NODE_PQCLEAN_HAS_LARGE_STACK ? 53 : 48;
+
+const std::array<Algorithm, N_ALGORITHMS>& algorithms() {
+  static const std::array<Algorithm, N_ALGORITHMS> all = {{
     {
       "dilithium2",
       PQCLEAN_DILITHIUM2_CLEAN_CRYPTO_ALGNAME,
@@ -793,6 +831,7 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWICOMPRESSED_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWICOMPRESSED_CLEAN_crypto_sign_verify
     },
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "rainbowIII-circumzenithal",
       PQCLEAN_RAINBOWIIICIRCUMZENITHAL_CLEAN_CRYPTO_ALGNAME,
@@ -808,6 +847,7 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWIIICIRCUMZENITHAL_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWIIICIRCUMZENITHAL_CLEAN_crypto_sign_verify
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "rainbowIII-classic",
       PQCLEAN_RAINBOWIIICLASSIC_CLEAN_CRYPTO_ALGNAME,
@@ -823,6 +863,7 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWIIICLASSIC_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWIIICLASSIC_CLEAN_crypto_sign_verify
     },
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "rainbowIII-compressed",
       PQCLEAN_RAINBOWIIICOMPRESSED_CLEAN_CRYPTO_ALGNAME,
@@ -838,6 +879,8 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWIIICOMPRESSED_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWIIICOMPRESSED_CLEAN_crypto_sign_verify
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "rainbowV-circumzenithal",
       PQCLEAN_RAINBOWVCIRCUMZENITHAL_CLEAN_CRYPTO_ALGNAME,
@@ -853,6 +896,8 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWVCIRCUMZENITHAL_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWVCIRCUMZENITHAL_CLEAN_crypto_sign_verify
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "rainbowV-classic",
       PQCLEAN_RAINBOWVCLASSIC_CLEAN_CRYPTO_ALGNAME,
@@ -868,6 +913,8 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWVCLASSIC_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWVCLASSIC_CLEAN_crypto_sign_verify
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
+#if NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "rainbowV-compressed",
       PQCLEAN_RAINBOWVCOMPRESSED_CLEAN_CRYPTO_ALGNAME,
@@ -883,6 +930,7 @@ const std::array<Algorithm, 53>& algorithms() {
       PQCLEAN_RAINBOWVCOMPRESSED_CLEAN_crypto_sign_signature,
       PQCLEAN_RAINBOWVCOMPRESSED_CLEAN_crypto_sign_verify
     },
+#endif  // NODE_PQCLEAN_HAS_LARGE_STACK
     {
       "sphincs-haraka-128f-robust",
       PQCLEAN_SPHINCSHARAKA128FROBUST_CLEAN_CRYPTO_ALGNAME,

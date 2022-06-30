@@ -10,8 +10,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest, macOS-latest, windows-latest]
         node-version: [14.x, 16.x, 18.x]
+        exclude:
+          # Visual Studio 2022 does not work with Node.js 14.
+          - os: windows-latest
+            node-version: 14.x
     steps:
       - name: Checkout
         uses: actions/checkout@v3
