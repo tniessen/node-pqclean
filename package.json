@@ -15,7 +15,7 @@
     "install": "node scripts/install.mjs",
     "test": "node test",
     "prepack": "npm run build-wasm",
-    "build-native": "node-gyp rebuild",
+    "build-native": "node-gyp rebuild -j max",
     "build-wasm": "node scripts/build-wasm.mjs"
   },
   "repository": {
