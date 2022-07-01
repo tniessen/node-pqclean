@@ -1,6 +1,6 @@
 {
   "name": "pqclean",
-  "version": "0.0.1-alpha",
+  "version": "0.1.0",
   "description": "Node.js bindings for all post-quantum implementations included in PQClean",
   "main": "index.js",
   "dependencies": {
