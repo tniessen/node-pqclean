@@ -236,7 +236,7 @@ test('KEM should be compatible with mceliece-nist', {
           ['PQClean', pqcleanEnc], ['mceliece-nist', mcelieceEnc]]
         ) {
           const pqcleanDec = kem.decryptKey(privateKey, encryptedKey);
-          const mcelieceDec = kem.decryptKey(privateKey, encryptedKey);
+          const mcelieceDec = mceliece.decryptKey(privateKey, encryptedKey);
           for (const [dec, decryptedKey] of [
             ['PQClean', pqcleanDec], ['mceliece-nist', mcelieceDec]
           ]) {
