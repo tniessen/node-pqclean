@@ -31,10 +31,14 @@ test('KEM.supportedAlgorithms', (t) => {
 
 for (const algorithm of KEM.supportedAlgorithms) {
   test(`properties of ${algorithm}`, (st) => {
-    st.plan(10);
+    st.plan(12);
 
     const isUint32 = (x) => x === (x >>> 0);
     const kem = new KEM(algorithm);
+
+    st.equal(kem.algorithm, algorithm, `algorithm should be '${algorithm}'`);
+    st.equal(typeof kem.description, 'string',
+             'description should be a string');
 
     st.ok(isUint32(kem.keySize), 'keySize should be an unsigned integer');
     st.ok(16 <= kem.keySize && kem.keySize <= 64,
@@ -280,10 +284,14 @@ test('Sign.supportedAlgorithms', (t) => {
 
 for (const algorithm of Sign.supportedAlgorithms) {
   test(`properties of ${algorithm}`, (st) => {
-    st.plan(6);
+    st.plan(8);
 
     const isUint32 = (x) => x === (x >>> 0);
     const sign = new Sign(algorithm);
+
+    st.equal(sign.algorithm, algorithm, `algorithm should be '${algorithm}'`);
+    st.equal(typeof sign.description, 'string',
+             'description should be a string');
 
     st.ok(isUint32(sign.signatureSize),
           'signatureSize should be an unsigned integer');
