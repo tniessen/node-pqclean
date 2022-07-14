@@ -124,12 +124,12 @@
       'target_name': 'pqclean_kem_firesaber',
       'type': 'static_library',
       'sources': [
+        '../../deps/PQClean/crypto_kem/firesaber/clean/SABER_indcpa.c',
         '../../deps/PQClean/crypto_kem/firesaber/clean/cbd.c',
         '../../deps/PQClean/crypto_kem/firesaber/clean/kem.c',
         '../../deps/PQClean/crypto_kem/firesaber/clean/pack_unpack.c',
         '../../deps/PQClean/crypto_kem/firesaber/clean/poly.c',
         '../../deps/PQClean/crypto_kem/firesaber/clean/poly_mul.c',
-        '../../deps/PQClean/crypto_kem/firesaber/clean/SABER_indcpa.c',
         '../../deps/PQClean/crypto_kem/firesaber/clean/verify.c',
       ],
       'include_dirs': [
@@ -227,8 +227,8 @@
       'sources': [
         '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/code.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/fft.c',
-        '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/gf2x.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/gf.c',
+        '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/gf2x.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/hqc.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/kem.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-128/clean/parsing.c',
@@ -247,8 +247,8 @@
       'sources': [
         '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/code.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/fft.c',
-        '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/gf2x.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/gf.c',
+        '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/gf2x.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/hqc.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/kem.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-192/clean/parsing.c',
@@ -267,8 +267,8 @@
       'sources': [
         '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/code.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/fft.c',
-        '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/gf2x.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/gf.c',
+        '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/gf2x.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/hqc.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/kem.c',
         '../../deps/PQClean/crypto_kem/hqc-rmrs-256/clean/parsing.c',
@@ -399,12 +399,12 @@
       'target_name': 'pqclean_kem_lightsaber',
       'type': 'static_library',
       'sources': [
+        '../../deps/PQClean/crypto_kem/lightsaber/clean/SABER_indcpa.c',
         '../../deps/PQClean/crypto_kem/lightsaber/clean/cbd.c',
         '../../deps/PQClean/crypto_kem/lightsaber/clean/kem.c',
         '../../deps/PQClean/crypto_kem/lightsaber/clean/pack_unpack.c',
         '../../deps/PQClean/crypto_kem/lightsaber/clean/poly.c',
         '../../deps/PQClean/crypto_kem/lightsaber/clean/poly_mul.c',
-        '../../deps/PQClean/crypto_kem/lightsaber/clean/SABER_indcpa.c',
         '../../deps/PQClean/crypto_kem/lightsaber/clean/verify.c',
       ],
       'include_dirs': [
@@ -966,12 +966,12 @@
       'target_name': 'pqclean_kem_saber',
       'type': 'static_library',
       'sources': [
+        '../../deps/PQClean/crypto_kem/saber/clean/SABER_indcpa.c',
         '../../deps/PQClean/crypto_kem/saber/clean/cbd.c',
         '../../deps/PQClean/crypto_kem/saber/clean/kem.c',
         '../../deps/PQClean/crypto_kem/saber/clean/pack_unpack.c',
         '../../deps/PQClean/crypto_kem/saber/clean/poly.c',
         '../../deps/PQClean/crypto_kem/saber/clean/poly_mul.c',
-        '../../deps/PQClean/crypto_kem/saber/clean/SABER_indcpa.c',
         '../../deps/PQClean/crypto_kem/saber/clean/verify.c',
       ],
       'include_dirs': [
