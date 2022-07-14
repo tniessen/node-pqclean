@@ -33,6 +33,25 @@ if (!backend) {
 let wasmRequired = true;
 
 if (backend.wantNative) {
+  try {
+    await access('native/gen/binding.gyp');
+    await access('native/gen/algorithm-inl.h');
+    console.log('Generated sources exist. To regenerate, please use "npm run regenerate-native".');
+  } catch {
+    const proc = spawn(process.env.npm_node_execpath || process.execPath, [
+      process.env.npm_execpath, 'run', 'regenerate-native'
+    ], {
+      stdio: 'inherit'
+    });
+    const [code] = await events.once(proc, 'close');
+    if (code === 0) {
+      console.log('Successfully generated native source files.');
+    } else {
+      console.error('Generating native source files failed. Please check the output above.');
+      process.exit(1);
+    }
+  }
+
   const proc = spawn(process.env.npm_node_execpath || process.execPath, [
     process.env.npm_execpath, 'run', 'build-native'
   ], {

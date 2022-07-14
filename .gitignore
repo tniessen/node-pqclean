@@ -1,4 +1,5 @@
 build/
+native/gen/
 node_modules/
 package-lock.json
 wasm/gen/
