@@ -100,5 +100,17 @@ for (const algorithm of sign.supportedAlgorithms) {
       t.equal(await otherPublicKey.verify(message, signature), false,
               'verify should return false when the public key is incorrect');
     }
+
+    const exportedPublicKey = publicKey.export();
+    t.ok(exportedPublicKey instanceof ArrayBuffer,
+         'exported public key should be an ArrayBuffer');
+    t.equal(exportedPublicKey.byteLength, publicKeySize,
+            `exportedPublicKey.byteLength should be ${publicKeySize}`);
+
+    const exportedPrivateKey = privateKey.export();
+    t.ok(exportedPrivateKey instanceof ArrayBuffer,
+         'exported private key should be an ArrayBuffer');
+    t.equal(exportedPrivateKey.byteLength, privateKeySize,
+            `exportedPrivateKey.byteLength should be ${privateKeySize}`);
   });
 }
