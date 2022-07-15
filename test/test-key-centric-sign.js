@@ -70,6 +70,7 @@ for (const algorithm of sign.supportedAlgorithms) {
     t.equal(privateKey.constructor.name, 'PQCleanSignPrivateKey',
             "privateKey constructor name should be 'PQCleanSignPrivateKey'");
 
+    const { publicKey: otherPublicKey } = await sign.generateKeyPair(algorithm.name);
     for (const messageSize of [0, Math.ceil(Math.random() * 100000)]) {
       const message = randomBytes(messageSize);
 
@@ -96,7 +97,6 @@ for (const algorithm of sign.supportedAlgorithms) {
               'verify should return false when the message has been modified');
 
       // Use a different key pair.
-      const { publicKey: otherPublicKey } = await sign.generateKeyPair(algorithm.name);
       t.equal(await otherPublicKey.verify(message, signature), false,
               'verify should return false when the public key is incorrect');
     }
