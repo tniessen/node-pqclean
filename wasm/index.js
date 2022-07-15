@@ -25,6 +25,7 @@ const instance = new WebAssembly.Instance(wasm, {
 const mem = () => Buffer.from(instance.exports.memory.buffer);
 const store = (ptr, bytes) => mem().set(bytes, ptr);
 const loadCopy = (ptr, size) => Uint8Array.prototype.slice.call(mem(), ptr, ptr + size);
+const loadSlice = (ptr, size) => instance.exports.memory.buffer.slice(ptr, ptr + size);
 const storeSize = (ptr, value) => mem().writeUInt32LE(value, ptr);
 const loadSize = (ptr) => mem().readUInt32LE(ptr);
 
@@ -57,6 +58,10 @@ function scopedAlloc(size, fn) {
 }
 
 const byName = (algorithm) => ({ properties: { name } }) => name === algorithm;
+
+////////////////////////////////////////////////////////////////////////////////
+// Classic API
+////////////////////////////////////////////////////////////////////////////////
 
 class KEM {
   #algorithm;
@@ -470,3 +475,427 @@ Object.defineProperty(Sign, 'supportedAlgorithms', {
 });
 
 Object.assign(module.exports, { KEM, Sign });
+
+////////////////////////////////////////////////////////////////////////////////
+// Key-centric API
+////////////////////////////////////////////////////////////////////////////////
+
+function fakeAsync(fn) {
+  return new Promise((resolve, reject) => {
+    setImmediate(() => fn().then(resolve, reject));
+  });
+}
+
+class PQCleanKEMPublicKey {
+  #algorithm;
+  #material;
+
+  constructor(name, key) {
+    if (arguments.length !== 2) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (typeof name !== 'string') {
+      throw new TypeError('First argument must be a string');
+    }
+
+    if (key instanceof ArrayBuffer) {
+      this.#material = key.slice(0);
+    } else if (ArrayBuffer.isView(key)) {
+      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+    } else {
+      throw new TypeError('Second argument must be a BufferSource');
+    }
+
+    if ((this.#algorithm = algorithms.kem.find(byName(name))) == null) {
+      throw new Error('No such implementation');
+    }
+
+    if (this.#material.byteLength !== this.#algorithm.properties.publicKeySize) {
+      throw new Error('Invalid public key size');
+    }
+  }
+
+  get algorithm() {
+    return { ...this.#algorithm.properties };
+  }
+
+  export() {
+    return this.#material.slice(0);
+  }
+
+  generateKey() {
+    if (arguments.length !== 0) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    return fakeAsync(async () => {
+      const { publicKeySize, keySize, encryptedKeySize } = this.#algorithm.properties;
+
+      return scopedAlloc(publicKeySize + keySize + encryptedKeySize, (ptr) => {
+        const publicKeyPtr = ptr, keyPtr = ptr + publicKeySize, encryptedKeyPtr = ptr + publicKeySize + keySize;
+        store(publicKeyPtr, new Uint8Array(this.#material));
+
+        const ret = instance.exports[this.#algorithm.functions.enc](encryptedKeyPtr, keyPtr, publicKeyPtr);
+        if (ret !== 0) {
+          throw new Error('Encapsulation failed');
+        }
+
+        const key = loadSlice(keyPtr, keySize);
+        const encryptedKey = loadSlice(encryptedKeyPtr, encryptedKeySize);
+        return { key, encryptedKey };
+      });
+    });
+  }
+}
+
+class PQCleanKEMPrivateKey {
+  #algorithm;
+  #material;
+
+  constructor(name, key) {
+    if (arguments.length !== 2) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (typeof name !== 'string') {
+      throw new TypeError('First argument must be a string');
+    }
+
+    if (key instanceof ArrayBuffer) {
+      this.#material = key.slice(0);
+    } else if (ArrayBuffer.isView(key)) {
+      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+    } else {
+      throw new TypeError('Second argument must be a BufferSource');
+    }
+
+    if ((this.#algorithm = algorithms.kem.find(byName(name))) == null) {
+      throw new Error('No such implementation');
+    }
+
+    if (this.#material.byteLength !== this.#algorithm.properties.privateKeySize) {
+      throw new Error('Invalid private key size');
+    }
+  }
+
+  get algorithm() {
+    return { ...this.#algorithm.properties };
+  }
+
+  export() {
+    return this.#material.slice(0);
+  }
+
+  decryptKey(encryptedKey) {
+    if (arguments.length !== 1) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    let encryptedKeyTypedArray;
+    if (encryptedKey instanceof ArrayBuffer) {
+      encryptedKeyTypedArray = new Uint8Array(encryptedKey);
+    } else if (ArrayBuffer.isView(encryptedKey)) {
+      if (encryptedKey instanceof DataView) {
+        encryptedKeyTypedArray = new Uint8Array(encryptedKey.buffer, encryptedKey.byteOffset, encryptedKey.byteLength);
+      } else {
+        encryptedKeyTypedArray = encryptedKey;
+      }
+    } else {
+      throw new TypeError('First argument must be a BufferSource');
+    }
+
+    const { privateKeySize, keySize, encryptedKeySize } = this.#algorithm.properties;
+    if (encryptedKeyTypedArray.byteLength !== encryptedKeySize) {
+      throw new Error('Invalid ciphertext size');
+    }
+
+    return scopedAlloc(encryptedKeySize, (encryptedKeyPtr, escapeEncryptedKey) => {
+      store(encryptedKeyPtr, encryptedKeyTypedArray);
+
+      const encryptedKeyContext = escapeEncryptedKey();
+      return fakeAsync(async () => encryptedKeyContext(() => {
+        return scopedAlloc(privateKeySize + keySize, (ptr) => {
+          const privateKeyPtr = ptr, keyPtr = ptr + privateKeySize;
+          store(privateKeyPtr, new Uint8Array(this.#material));
+
+          const ret = instance.exports[this.#algorithm.functions.dec](keyPtr, encryptedKeyPtr, privateKeyPtr);
+          if (ret !== 0) {
+            throw new Error('Decryption failed');
+          }
+
+          return loadSlice(keyPtr, keySize);
+        });
+      }));
+    });
+  }
+}
+
+function generateKEMKeyPair(name) {
+  if (arguments.length !== 1) {
+    throw new TypeError('Wrong number of arguments');
+  }
+
+  if (typeof name !== 'string') {
+    throw new TypeError('First argument must be a string');
+  }
+
+  const algorithm = algorithms.kem.find(byName(name));
+  if (algorithm == null) {
+    throw new Error('No such implementation');
+  }
+
+  return fakeAsync(async () => {
+    const { privateKeySize, publicKeySize } = algorithm.properties;
+
+    return scopedAlloc(privateKeySize + publicKeySize, (ptr) => {
+      const privateKeyPtr = ptr, publicKeyPtr = ptr + privateKeySize;
+      const ret = instance.exports[algorithm.functions.keypair](publicKeyPtr, privateKeyPtr);
+      if (ret !== 0) {
+        throw new Error('Failed to generate keypair');
+      }
+
+      // TODO: avoid all the copying, maybe just maintain a pointer to the
+      // WebAssembly memory.
+      return {
+        publicKey: new PQCleanKEMPublicKey(name, loadSlice(publicKeyPtr, publicKeySize)),
+        privateKey: new PQCleanKEMPrivateKey(name, loadSlice(privateKeyPtr, privateKeySize))
+      };
+    });
+  });
+}
+
+class PQCleanSignPublicKey {
+  #algorithm;
+  #material;
+
+  constructor(name, key) {
+    if (arguments.length !== 2) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (typeof name !== 'string') {
+      throw new TypeError('First argument must be a string');
+    }
+
+    if (key instanceof ArrayBuffer) {
+      this.#material = key.slice(0);
+    } else if (ArrayBuffer.isView(key)) {
+      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+    } else {
+      throw new TypeError('Second argument must be a BufferSource');
+    }
+
+    if ((this.#algorithm = algorithms.sign.find(byName(name))) == null) {
+      throw new Error('No such implementation');
+    }
+
+    if (this.#material.byteLength !== this.#algorithm.properties.publicKeySize) {
+      throw new Error('Invalid public key size');
+    }
+  }
+
+  get algorithm() {
+    return { ...this.#algorithm.properties };
+  }
+
+  export() {
+    return this.#material.slice(0);
+  }
+
+  verify(message, signature) {
+    if (arguments.length !== 2) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    let messageTypedArray;
+    if (message instanceof ArrayBuffer) {
+      messageTypedArray = new Uint8Array(message);
+    } else if (ArrayBuffer.isView(message)) {
+      if (message instanceof DataView) {
+        messageTypedArray = new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
+      } else {
+        messageTypedArray = message;
+      }
+    } else {
+      throw new TypeError('First argument must be a BufferSource');
+    }
+
+    let signatureTypedArray;
+    if (signature instanceof ArrayBuffer) {
+      signatureTypedArray = new Uint8Array(signature);
+    } else if (ArrayBuffer.isView(signature)) {
+      if (signature instanceof DataView) {
+        signatureTypedArray = new Uint8Array(signature.buffer, signature.byteOffset, signature.byteLength);
+      } else {
+        signatureTypedArray = signature;
+      }
+    } else {
+      throw new TypeError('Second argument must be a BufferSource');
+    }
+
+    const messageSize = messageTypedArray.byteLength;
+    const signatureSize = signatureTypedArray.byteLength;
+
+    const { publicKeySize, signatureSize: maxSignatureSize } = this.#algorithm.properties;
+
+    if (signatureSize > maxSignatureSize) {
+      throw new Error('Invalid signature size');
+    }
+
+    return scopedAlloc(messageSize + signatureSize, (inputPtr, escapeInput) => {
+      const messagePtr = inputPtr, signaturePtr = inputPtr + messageSize;
+      store(messagePtr, messageTypedArray);
+      store(signaturePtr, signatureTypedArray);
+
+      const inputContext = escapeInput();
+      return fakeAsync(async () => inputContext(() => {
+        return scopedAlloc(publicKeySize, (publicKeyPtr) => {
+          store(publicKeyPtr, new Uint8Array(this.#material));
+
+          // TODO: can we distinguish verification errors from other internal errors?
+          return 0 === instance.exports[this.#algorithm.functions.verify](signaturePtr, signatureSize, messagePtr, messageSize, publicKeyPtr);
+        });
+      }));
+    });
+  }
+}
+
+class PQCleanSignPrivateKey {
+  #algorithm;
+  #material;
+
+  constructor(name, key) {
+    if (arguments.length !== 2) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    if (typeof name !== 'string') {
+      throw new TypeError('First argument must be a string');
+    }
+
+    if (key instanceof ArrayBuffer) {
+      this.#material = key.slice(0);
+    } else if (ArrayBuffer.isView(key)) {
+      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+    } else {
+      throw new TypeError('Second argument must be a BufferSource');
+    }
+
+    if ((this.#algorithm = algorithms.sign.find(byName(name))) == null) {
+      throw new Error('No such implementation');
+    }
+
+    if (this.#material.byteLength !== this.#algorithm.properties.privateKeySize) {
+      throw new Error('Invalid private key size');
+    }
+  }
+
+  get algorithm() {
+    return { ...this.#algorithm.properties };
+  }
+
+  export() {
+    return this.#material.slice(0);
+  }
+
+  sign(message) {
+    if (arguments.length !== 1) {
+      throw new TypeError('Wrong number of arguments');
+    }
+
+    let messageTypedArray;
+    if (message instanceof ArrayBuffer) {
+      messageTypedArray = new Uint8Array(message);
+    } else if (ArrayBuffer.isView(message)) {
+      if (message instanceof DataView) {
+        messageTypedArray = new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
+      } else {
+        messageTypedArray = message;
+      }
+    } else {
+      throw new TypeError('First argument must be a BufferSource');
+    }
+
+    const { privateKeySize, signatureSize } = this.#algorithm.properties;
+
+    const messageSize = messageTypedArray.byteLength;
+    return scopedAlloc(messageSize, (messagePtr, escapeMessage) => {
+      store(messagePtr, messageTypedArray);
+
+      const messageContext = escapeMessage();
+      return fakeAsync(async () => messageContext(() => {
+        return scopedAlloc(privateKeySize + 4 + signatureSize, (ptr) => {
+          const privateKeyPtr = ptr, signatureSizePtr = ptr + privateKeySize, signaturePtr = ptr + privateKeySize + 4;
+          store(privateKeyPtr, new Uint8Array(this.#material));
+          storeSize(signatureSizePtr, signatureSize);
+
+          const ret = instance.exports[this.#algorithm.functions.signature](signaturePtr, signatureSizePtr, messagePtr, messageSize, privateKeyPtr);
+          if (ret !== 0) {
+            throw new Error('Sign operation failed');
+          }
+
+          const actualSize = loadSize(signatureSizePtr);
+          if (actualSize > signatureSize) {
+            throw new Error(`Actual signature size (${actualSize}) exceeds maximum size (${signatureSize}).`);
+          }
+
+          return loadSlice(signaturePtr, actualSize);
+        });
+      }));
+    });
+  }
+}
+
+function generateSignKeyPair(name) {
+  if (arguments.length !== 1) {
+    throw new TypeError('Wrong number of arguments');
+  }
+
+  if (typeof name !== 'string') {
+    throw new TypeError('First argument must be a string');
+  }
+
+  const algorithm = algorithms.sign.find(byName(name));
+  if (algorithm == null) {
+    throw new Error('No such implementation');
+  }
+
+  return fakeAsync(async () => {
+    const { privateKeySize, publicKeySize } = algorithm.properties;
+
+    return scopedAlloc(privateKeySize + publicKeySize, (ptr) => {
+      const privateKeyPtr = ptr, publicKeyPtr = ptr + privateKeySize;
+      const ret = instance.exports[algorithm.functions.keypair](publicKeyPtr, privateKeyPtr);
+      if (ret !== 0) {
+        throw new Error('Failed to generate keypair');
+      }
+
+      // TODO: avoid all the copying, maybe just maintain a pointer to the
+      // WebAssembly memory.
+      return {
+        publicKey: new PQCleanSignPublicKey(name, loadSlice(publicKeyPtr, publicKeySize)),
+        privateKey: new PQCleanSignPrivateKey(name, loadSlice(privateKeyPtr, privateKeySize))
+      };
+    });
+  });
+}
+
+Object.assign(module.exports, {
+  kem: Object.defineProperties({}, {
+    PublicKey: { value: PQCleanKEMPublicKey },
+    PrivateKey: { value: PQCleanKEMPrivateKey },
+    generateKeyPair: { value: generateKEMKeyPair },
+    supportedAlgorithms: {
+      value: algorithms.kem.map(({ properties }) => ({ ...properties }))
+    }
+  }),
+  sign: Object.defineProperties({}, {
+    PublicKey: { value: PQCleanSignPublicKey },
+    PrivateKey: { value: PQCleanSignPrivateKey },
+    generateKeyPair: { value: generateSignKeyPair },
+    supportedAlgorithms: {
+      value: algorithms.sign.map(({ properties }) => ({ ...properties }))
+    }
+  })
+});

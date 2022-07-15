@@ -41,8 +41,8 @@ async function readAlgorithms(names, type, props, functions) {
 }
 
 const kemAlgorithms = await readAlgorithms(kemNames, 'kem', (api) => ({
-  encryptedKeySize: api.CIPHERTEXTBYTES,
-  keySize: api.BYTES
+  keySize: api.BYTES,
+  encryptedKeySize: api.CIPHERTEXTBYTES
 }), ['keypair', 'enc', 'dec']);
 
 const signAlgorithms = await readAlgorithms(signNames, 'sign', (api) => ({

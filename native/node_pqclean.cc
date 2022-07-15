@@ -44,6 +44,10 @@ inline T* Duplicate(const void* mem, size_t size) {
   return copy;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Classic API
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename Algorithm>
 class GenerateKeyPairWorker : public Napi::AsyncWorker {
  public:
@@ -706,11 +710,1031 @@ Napi::Function InitSign(Napi::Env env) {
   return func;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Key-centric API
+////////////////////////////////////////////////////////////////////////////////
+
+struct AddonData {
+  Napi::FunctionReference* kemPublicKeyConstructor;
+  Napi::FunctionReference* kemPrivateKeyConstructor;
+  Napi::FunctionReference* asymmetricKEMKeyContainerConstructor;
+
+  Napi::FunctionReference* signPublicKeyConstructor;
+  Napi::FunctionReference* signPrivateKeyConstructor;
+  Napi::FunctionReference* asymmetricSignKeyContainerConstructor;
+};
+
+// TODO: replace with std::u8string_view (C++20) at some point in the future
+struct ArrayBufferSlice {
+  unsigned char* data;
+  size_t byteLength;
+};
+
+inline ArrayBufferSlice GetArrayBufferAsSlice(Napi::ArrayBuffer arrayBuffer) {
+  return {
+    static_cast<unsigned char*>(arrayBuffer.Data()),
+    arrayBuffer.ByteLength()
+  };
+}
+
+template <typename T>
+inline ArrayBufferSlice GetArrayBufferViewAsSlice(T view) {
+  auto slice = GetArrayBufferAsSlice(view.ArrayBuffer());
+  slice.data += view.ByteOffset();
+  NAPI_CHECK(slice.byteLength >= view.ByteLength(),
+             "PQClean:GetArrayBufferViewAsSlice",
+             "ArrayBufferView.byteLength must be less than or equal to "
+             "ArrayBufferView.buffer.byteLength.");
+  slice.byteLength = view.ByteLength();
+  return slice;
+}
+
+inline bool GetBufferSourceAsSlice(Napi::Value v, ArrayBufferSlice* out) {
+  if (v.IsArrayBuffer()) {
+    *out = GetArrayBufferAsSlice(v.As<Napi::ArrayBuffer>());
+    return true;
+  } else if (v.IsTypedArray()) {
+    *out = GetArrayBufferViewAsSlice<Napi::TypedArray>(v.As<Napi::TypedArray>());
+    return true;
+  } else if (v.IsDataView()) {
+    *out = GetArrayBufferViewAsSlice<Napi::DataView>(v.As<Napi::DataView>());
+    return true;
+  } else {
+    return false;
+  }
+}
+
+Napi::Object GetAlgorithmObject(Napi::Env env, const pqclean::kem::Algorithm* impl) {
+  Napi::Object algorithm = Napi::Object::New(env);
+  algorithm.Set("name", impl->id);
+  algorithm.Set("description", impl->description);
+  algorithm.Set("publicKeySize", impl->publicKeySize);
+  algorithm.Set("privateKeySize", impl->privateKeySize);
+  algorithm.Set("keySize", impl->keySize);
+  algorithm.Set("encryptedKeySize", impl->ciphertextSize);
+  return algorithm;
+}
+
+Napi::Object GetAlgorithmObject(Napi::Env env, const pqclean::sign::Algorithm* impl) {
+  Napi::Object algorithm = Napi::Object::New(env);
+  algorithm.Set("name", impl->id);
+  algorithm.Set("description", impl->description);
+  algorithm.Set("publicKeySize", impl->publicKeySize);
+  algorithm.Set("privateKeySize", impl->privateKeySize);
+  algorithm.Set("signatureSize", impl->signatureSize);
+  return algorithm;
+}
+
+template <typename Algorithm>
+class AsymmetricKey {
+ public:
+  typedef std::shared_ptr<AsymmetricKey> Ptr;
+
+  enum class Type { publicKey, privateKey };
+
+  class Builder {
+   public:
+    Builder(const Algorithm* impl, Type type)
+        : impl(impl),
+          bytes(type == Type::publicKey ? impl->publicKeySize : impl->privateKeySize) {}
+
+    inline size_t size() {
+      return bytes.size();
+    }
+
+    inline unsigned char* data() {
+      return bytes.data();
+    }
+
+    inline Ptr release() && {
+      return Ptr(new AsymmetricKey(impl, std::move(bytes)));
+    }
+
+   private:
+    const Algorithm* impl;
+    std::vector<unsigned char> bytes;
+  };
+
+  AsymmetricKey(const Algorithm* impl, Type type,
+                unsigned char* p, size_t s)
+      : impl(impl), bytes(p, p + s) {
+    size_t expected = (type == Type::publicKey) ? impl->publicKeySize
+                                                : impl->privateKeySize;
+    NAPI_CHECK(s == expected, "PQClean:AsymmetricKey", "unexpected key size");
+  }
+
+  inline const Algorithm* algorithm() {
+    return impl;
+  }
+
+  inline const std::vector<unsigned char>& material() {
+    return bytes;
+  }
+
+ private:
+  AsymmetricKey(const Algorithm* impl, std::vector<unsigned char>&& bytes)
+      : impl(impl), bytes(std::move(bytes)) {}
+
+  const Algorithm* impl;
+  std::vector<unsigned char> bytes;
+};
+
+template <typename Algorithm>
+class AsymmetricKeyContainer : public Napi::ObjectWrap<AsymmetricKeyContainer<Algorithm>> {
+ public:
+  AsymmetricKeyContainer(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<AsymmetricKeyContainer<Algorithm>>(info) {}
+
+  void Embed(const typename AsymmetricKey<Algorithm>::Ptr& key) {
+    this->key = key;
+  }
+
+  const typename AsymmetricKey<Algorithm>::Ptr& GetEmbedded() {
+    return key;
+  }
+
+ private:
+  typename AsymmetricKey<Algorithm>::Ptr key;
+};
+
+class KeyEncapsulationWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::kem::Algorithm>::Ptr& publicKey) {
+    KeyEncapsulationWorker* worker = new KeyEncapsulationWorker(env, publicKey);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    if (publicKey->algorithm()->enc(&encryptedKey[0], &key[0], publicKey->material().data()) != 0) {
+      return SetError("failed to generate keypair");
+    }
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+
+    // TODO: avoid new allocation / copying
+    auto key = Napi::ArrayBuffer::New(env, publicKey->algorithm()->keySize);
+    auto ct = Napi::ArrayBuffer::New(env, publicKey->algorithm()->ciphertextSize);
+    std::copy(&this->key[0], &this->key[0] + publicKey->algorithm()->keySize, reinterpret_cast<unsigned char*>(key.Data()));
+    std::copy(&this->encryptedKey[0], &this->encryptedKey[0] + publicKey->algorithm()->ciphertextSize, reinterpret_cast<unsigned char*>(ct.Data()));
+
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("key", key);
+    obj.Set("encryptedKey", ct);
+    deferred.Resolve(obj);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  KeyEncapsulationWorker(Napi::Env env, const AsymmetricKey<pqclean::kem::Algorithm>::Ptr& publicKey)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        publicKey(publicKey),
+        key(new unsigned char[publicKey->algorithm()->keySize]),
+        encryptedKey(new unsigned char[publicKey->algorithm()->ciphertextSize]) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Input:
+  AsymmetricKey<pqclean::kem::Algorithm>::Ptr publicKey;
+
+  // Outputs:
+  std::unique_ptr<unsigned char[]> key;
+  std::unique_ptr<unsigned char[]> encryptedKey;
+};
+
+class KeyDecapsulationWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::kem::Algorithm>::Ptr& privateKey,
+                       std::unique_ptr<unsigned char[]>&& encryptedKey) {
+    KeyDecapsulationWorker* worker = new KeyDecapsulationWorker(env, privateKey, std::move(encryptedKey));
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    if (privateKey->algorithm()->dec(&key[0], &encryptedKey[0], privateKey->material().data()) != 0) {
+      return SetError("decryption failed");
+    }
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+
+    // TODO: avoid new allocation / copying
+    auto key = Napi::ArrayBuffer::New(env, privateKey->algorithm()->keySize);
+    std::copy(&this->key[0], &this->key[0] + privateKey->algorithm()->keySize, reinterpret_cast<unsigned char*>(key.Data()));
+
+    deferred.Resolve(key);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  KeyDecapsulationWorker(Napi::Env env, const AsymmetricKey<pqclean::kem::Algorithm>::Ptr& privateKey,
+                         std::unique_ptr<unsigned char[]>&& encryptedKey)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        privateKey(privateKey),
+        encryptedKey(std::move(encryptedKey)),
+        key(new unsigned char[privateKey->algorithm()->keySize]) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Inputs:
+  AsymmetricKey<pqclean::kem::Algorithm>::Ptr privateKey;
+  std::unique_ptr<unsigned char[]> encryptedKey;
+
+  // Output:
+  std::unique_ptr<unsigned char[]> key;
+};
+
+class KEMPublicKey : public Napi::ObjectWrap<KEMPublicKey> {
+ public:
+  KEMPublicKey(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<KEMPublicKey>(info) {
+    Napi::Env env = info.Env();
+
+    // We use instances of AsymmetricKeyContainer to pass AsymmetricKey::Ptr
+    // to the constructor. This class is not exposed to users, so this is not
+    // part of the public API.
+    if (info.Length() == 1 && info[0].IsObject()) {
+      Napi::Object container = info[0].As<Napi::Object>();
+      AddonData* addonData = env.GetInstanceData<AddonData>();
+      if (container.InstanceOf(addonData->asymmetricKEMKeyContainerConstructor->Value())) {
+        key = AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(container)->GetEmbedded();
+        return;
+      }
+    }
+
+    if (info.Length() != 2) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (!info[0].IsString()) {
+      Napi::TypeError::New(env, "First argument must be a string")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    ArrayBufferSlice material;
+    if (!GetBufferSourceAsSlice(info[1], &material)) {
+      Napi::TypeError::New(env, "Second argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    std::string name = info[0].As<Napi::String>();
+    auto impl = get_kem(name);
+    if (impl == nullptr) {
+      Napi::Error::New(env, "No such implementation")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (material.byteLength != impl->publicKeySize) {
+      Napi::Error::New(env, "Invalid public key size")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    key = std::make_shared<AsymmetricKey<pqclean::kem::Algorithm>>(impl, AsymmetricKey<pqclean::kem::Algorithm>::Type::publicKey,
+                                          material.data, material.byteLength);
+  }
+
+  Napi::Value GenerateKey(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 0) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    return KeyEncapsulationWorker::Q(env, key);
+  }
+
+  Napi::Value Export(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 0) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    auto& mat = this->key->material();
+    auto out = Napi::ArrayBuffer::New(env, mat.size());
+    std::copy(mat.begin(), mat.end(), reinterpret_cast<unsigned char*>(out.Data()));
+    return out;
+  }
+
+  Napi::Value GetAlgorithm(const Napi::CallbackInfo& info) {
+    return GetAlgorithmObject(Env(), key->algorithm());
+  }
+
+ private:
+  AsymmetricKey<pqclean::kem::Algorithm>::Ptr key;
+};
+
+class KEMPrivateKey : public Napi::ObjectWrap<KEMPrivateKey> {
+ public:
+  KEMPrivateKey(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<KEMPrivateKey>(info) {
+    Napi::Env env = info.Env();
+
+    // We use instances of AsymmetricKeyContainer to pass AsymmetricKey::Ptr
+    // to the constructor. This class is not exposed to users, so this is not
+    // part of the public API.
+    if (info.Length() == 1 && info[0].IsObject()) {
+      Napi::Object container = info[0].As<Napi::Object>();
+      AddonData* addonData = env.GetInstanceData<AddonData>();
+      if (container.InstanceOf(addonData->asymmetricKEMKeyContainerConstructor->Value())) {
+        key = AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(container)->GetEmbedded();
+        return;
+      }
+    }
+
+    if (info.Length() != 2) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (!info[0].IsString()) {
+      Napi::TypeError::New(env, "First argument must be a string")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    ArrayBufferSlice material;
+    if (!GetBufferSourceAsSlice(info[1], &material)) {
+      Napi::TypeError::New(env, "Second argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    std::string name = info[0].As<Napi::String>();
+    auto impl = get_kem(name);
+    if (impl == nullptr) {
+      Napi::Error::New(env, "No such implementation")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (material.byteLength != impl->privateKeySize) {
+      Napi::Error::New(env, "Invalid private key size")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    key = std::make_shared<AsymmetricKey<pqclean::kem::Algorithm>>(impl, AsymmetricKey<pqclean::kem::Algorithm>::Type::privateKey,
+                                          material.data, material.byteLength);
+  }
+
+  Napi::Value DecryptKey(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 1) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    ArrayBufferSlice encryptedKey;
+    if (!GetBufferSourceAsSlice(info[0], &encryptedKey)) {
+      Napi::TypeError::New(env, "First argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    if (encryptedKey.byteLength != key->algorithm()->ciphertextSize) {
+      Napi::Error::New(env, "Invalid ciphertext size")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    std::unique_ptr<unsigned char[]> encryptedKeyCopy = std::make_unique<unsigned char[]>(encryptedKey.byteLength);
+    std::copy(encryptedKey.data, encryptedKey.data + encryptedKey.byteLength, &encryptedKeyCopy[0]);
+
+    return KeyDecapsulationWorker::Q(env, key, std::move(encryptedKeyCopy));
+  }
+
+  Napi::Value Export(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 0) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    auto& mat = this->key->material();
+    auto out = Napi::ArrayBuffer::New(env, mat.size());
+    std::copy(mat.begin(), mat.end(), reinterpret_cast<unsigned char*>(out.Data()));
+    return out;
+  }
+
+  Napi::Value GetAlgorithm(const Napi::CallbackInfo& info) {
+    return GetAlgorithmObject(Env(), key->algorithm());
+  }
+
+ private:
+  AsymmetricKey<pqclean::kem::Algorithm>::Ptr key;
+};
+
+class KeyPairWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const pqclean::kem::Algorithm* impl) {
+    KeyPairWorker* worker = new KeyPairWorker(env, impl);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    AsymmetricKey<pqclean::kem::Algorithm>::Builder publicKey(impl, AsymmetricKey<pqclean::kem::Algorithm>::Type::publicKey);
+    AsymmetricKey<pqclean::kem::Algorithm>::Builder privateKey(impl, AsymmetricKey<pqclean::kem::Algorithm>::Type::privateKey);
+
+    if (impl->keypair(publicKey.data(), privateKey.data()) != 0) {
+      return SetError("failed to generate keypair");
+    }
+
+    this->publicKey = std::move(publicKey).release();
+    this->privateKey = std::move(privateKey).release();
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+    AddonData* addonData = env.GetInstanceData<AddonData>();
+
+    auto publicKeyContainer = addonData->asymmetricKEMKeyContainerConstructor->New({});
+    AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(publicKeyContainer)->Embed(publicKey);
+
+    auto privateKeyContainer = addonData->asymmetricKEMKeyContainerConstructor->New({});
+    AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(privateKeyContainer)->Embed(privateKey);
+
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("publicKey", addonData->kemPublicKeyConstructor->New({ publicKeyContainer }));
+    obj.Set("privateKey", addonData->kemPrivateKeyConstructor->New({ privateKeyContainer }));
+
+    deferred.Resolve(obj);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  KeyPairWorker(Napi::Env env, const pqclean::kem::Algorithm* impl)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        impl(impl) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Input:
+  const pqclean::kem::Algorithm* impl;
+
+  // Outputs:
+  AsymmetricKey<pqclean::kem::Algorithm>::Ptr publicKey;
+  AsymmetricKey<pqclean::kem::Algorithm>::Ptr privateKey;
+};
+
+Napi::Value GenerateKEMKeyPair(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() != 1) {
+    Napi::TypeError::New(env, "Wrong number of arguments")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  if (!info[0].IsString()) {
+    Napi::TypeError::New(env, "First argument must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  std::string name = info[0].As<Napi::String>();
+  const pqclean::kem::Algorithm* impl = get_kem(name);
+  if (impl == nullptr) {
+    Napi::Error::New(env, "No such implementation")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  return KeyPairWorker::Q(env, impl);
+}
+
+Napi::Object InitKeyCentricKEM(Napi::Env env, AddonData* addonData) {
+  Napi::Object obj = Napi::Object::New(env);
+
+  auto publicKeyClass = KEMPublicKey::DefineClass(env, "PQCleanKEMPublicKey", {
+    Napi::ObjectWrap<KEMPublicKey>::InstanceAccessor("algorithm", &KEMPublicKey::GetAlgorithm, nullptr, napi_enumerable),
+    Napi::ObjectWrap<KEMPublicKey>::InstanceMethod("generateKey", &KEMPublicKey::GenerateKey),
+    Napi::ObjectWrap<KEMPublicKey>::InstanceMethod("export", &KEMPublicKey::Export)
+  });
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("PublicKey", publicKeyClass, napi_enumerable));
+
+  addonData->kemPublicKeyConstructor = new Napi::FunctionReference();
+  *addonData->kemPublicKeyConstructor = Napi::Persistent(publicKeyClass);
+
+  auto privateKeyClass = KEMPrivateKey::DefineClass(env, "PQCleanKEMPrivateKey", {
+    Napi::ObjectWrap<KEMPrivateKey>::InstanceAccessor("algorithm", &KEMPrivateKey::GetAlgorithm, nullptr, napi_enumerable),
+    Napi::ObjectWrap<KEMPrivateKey>::InstanceMethod("decryptKey", &KEMPrivateKey::DecryptKey),
+    Napi::ObjectWrap<KEMPrivateKey>::InstanceMethod("export", &KEMPrivateKey::Export)
+  });
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("PrivateKey", privateKeyClass, napi_enumerable));
+
+  addonData->kemPrivateKeyConstructor = new Napi::FunctionReference();
+  *addonData->kemPrivateKeyConstructor = Napi::Persistent(privateKeyClass);
+
+  auto asymmetricKeyContainerClass = AsymmetricKeyContainer<pqclean::kem::Algorithm>::DefineClass(env, "InternalKEMKeyContainer", {});
+  addonData->asymmetricKEMKeyContainerConstructor = new Napi::FunctionReference();
+  *addonData->asymmetricKEMKeyContainerConstructor = Napi::Persistent(asymmetricKeyContainerClass);
+
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("generateKeyPair", Napi::Function::New<GenerateKEMKeyPair>(env), napi_enumerable));
+
+  const auto& algorithms = pqclean::kem::algorithms();
+  Napi::Array supported_algorithms = Napi::Array::New(env, algorithms.size());
+  for (size_t i = 0; i < algorithms.size(); i++) {
+    supported_algorithms[i] = GetAlgorithmObject(env, &algorithms[i]);
+  }
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("supportedAlgorithms", supported_algorithms, napi_enumerable));
+
+  return obj;
+}
+
+class SignatureWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& privateKey,
+                       std::unique_ptr<unsigned char[]>&& message, size_t messageSize) {
+    SignatureWorker* worker = new SignatureWorker(env, privateKey, std::move(message), messageSize);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    auto impl = privateKey->algorithm();
+
+    signatureSize = impl->signatureSize;
+    int r = impl->signature(&signature[0], &signatureSize, &message[0], messageSize, privateKey->material().data());
+    if (r != 0) {
+      return SetError("sign operation failed");
+    }
+
+    NAPI_CHECK(signatureSize <= impl->signatureSize, "PQClean:SignatureWorker",
+               "Actual signature size must not exceed maximum signature size.");
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+
+    // TODO: avoid new allocation / copying
+    auto key = Napi::ArrayBuffer::New(env, signatureSize);
+    std::copy(&this->signature[0], &this->signature[0] + signatureSize, reinterpret_cast<unsigned char*>(key.Data()));
+
+    deferred.Resolve(key);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  SignatureWorker(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& privateKey,
+                  std::unique_ptr<unsigned char[]>&& message, size_t messageSize)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        privateKey(privateKey),
+        message(std::move(message)),
+        messageSize(messageSize),
+        signature(new unsigned char[privateKey->algorithm()->signatureSize]) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Inputs:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr privateKey;
+  std::unique_ptr<unsigned char[]> message;
+  size_t messageSize;
+
+  // Output:
+  std::unique_ptr<unsigned char[]> signature;
+  size_t signatureSize;
+};
+
+class VerificationWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& publicKey,
+                       std::unique_ptr<unsigned char[]>&& message, size_t messageSize,
+                       std::unique_ptr<unsigned char[]>&& signature, size_t signatureSize) {
+    VerificationWorker* worker = new VerificationWorker(env, publicKey, std::move(message), messageSize, std::move(signature), signatureSize);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    auto impl = publicKey->algorithm();
+
+    // TODO: can we distinguish verification errors from other internal errors?
+    ok = 0 == impl->verify(&signature[0], signatureSize, &message[0], messageSize, publicKey->material().data());
+  }
+
+  virtual void OnOK() override {
+    deferred.Resolve(Napi::Value::From(Env(), ok));
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  VerificationWorker(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& publicKey,
+                     std::unique_ptr<unsigned char[]>&& message, size_t messageSize,
+                     std::unique_ptr<unsigned char[]>&& signature, size_t signatureSize)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        publicKey(publicKey),
+        message(std::move(message)), messageSize(messageSize),
+        signature(std::move(signature)), signatureSize(signatureSize) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Inputs:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr publicKey;
+  std::unique_ptr<unsigned char[]> message;
+  size_t messageSize;
+  std::unique_ptr<unsigned char[]> signature;
+  size_t signatureSize;
+
+  // Outputs:
+  bool ok;
+};
+
+class SignPublicKey : public Napi::ObjectWrap<SignPublicKey> {
+ public:
+  SignPublicKey(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<SignPublicKey>(info) {
+    Napi::Env env = info.Env();
+
+    // We use instances of AsymmetricKeyContainer to pass AsymmetricKey::Ptr
+    // to the constructor. This class is not exposed to users, so this is not
+    // part of the public API.
+    if (info.Length() == 1 && info[0].IsObject()) {
+      Napi::Object container = info[0].As<Napi::Object>();
+      AddonData* addonData = env.GetInstanceData<AddonData>();
+      if (container.InstanceOf(addonData->asymmetricSignKeyContainerConstructor->Value())) {
+        key = AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(container)->GetEmbedded();
+        return;
+      }
+    }
+
+    if (info.Length() != 2) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (!info[0].IsString()) {
+      Napi::TypeError::New(env, "First argument must be a string")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    ArrayBufferSlice material;
+    if (!GetBufferSourceAsSlice(info[1], &material)) {
+      Napi::TypeError::New(env, "Second argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    std::string name = info[0].As<Napi::String>();
+    auto impl = get_sign(name);
+    if (impl == nullptr) {
+      Napi::Error::New(env, "No such implementation")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (material.byteLength != impl->publicKeySize) {
+      Napi::Error::New(env, "Invalid public key size")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    key = std::make_shared<AsymmetricKey<pqclean::sign::Algorithm>>(impl, AsymmetricKey<pqclean::sign::Algorithm>::Type::publicKey,
+                                          material.data, material.byteLength);
+  }
+
+  Napi::Value Verify(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 2) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    ArrayBufferSlice message;
+    if (!GetBufferSourceAsSlice(info[0], &message)) {
+      Napi::TypeError::New(env, "First argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    ArrayBufferSlice signature;
+    if (!GetBufferSourceAsSlice(info[1], &signature)) {
+      Napi::TypeError::New(env, "Second argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    if (signature.byteLength > key->algorithm()->signatureSize) {
+      Napi::Error::New(env, "Invalid signature size")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    std::unique_ptr<unsigned char[]> messageCopy = std::make_unique<unsigned char[]>(message.byteLength);
+    std::copy(message.data, message.data + message.byteLength, &messageCopy[0]);
+
+    std::unique_ptr<unsigned char[]> signatureCopy = std::make_unique<unsigned char[]>(signature.byteLength);
+    std::copy(signature.data, signature.data + signature.byteLength, &signatureCopy[0]);
+
+    return VerificationWorker::Q(env, key, std::move(messageCopy), message.byteLength, std::move(signatureCopy), signature.byteLength);
+  }
+
+  Napi::Value Export(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 0) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    auto& mat = this->key->material();
+    auto out = Napi::ArrayBuffer::New(env, mat.size());
+    std::copy(mat.begin(), mat.end(), reinterpret_cast<unsigned char*>(out.Data()));
+    return out;
+  }
+
+  Napi::Value GetAlgorithm(const Napi::CallbackInfo& info) {
+    return GetAlgorithmObject(Env(), key->algorithm());
+  }
+
+ private:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr key;
+};
+
+class SignPrivateKey : public Napi::ObjectWrap<SignPrivateKey> {
+ public:
+  SignPrivateKey(const Napi::CallbackInfo& info)
+      : Napi::ObjectWrap<SignPrivateKey>(info) {
+    Napi::Env env = info.Env();
+
+    // We use instances of AsymmetricKeyContainer to pass AsymmetricKey::Ptr
+    // to the constructor. This class is not exposed to users, so this is not
+    // part of the public API.
+    if (info.Length() == 1 && info[0].IsObject()) {
+      Napi::Object container = info[0].As<Napi::Object>();
+      AddonData* addonData = env.GetInstanceData<AddonData>();
+      if (container.InstanceOf(addonData->asymmetricSignKeyContainerConstructor->Value())) {
+        key = AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(container)->GetEmbedded();
+        return;
+      }
+    }
+
+    if (info.Length() != 2) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (!info[0].IsString()) {
+      Napi::TypeError::New(env, "First argument must be a string")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    ArrayBufferSlice material;
+    if (!GetBufferSourceAsSlice(info[1], &material)) {
+      Napi::TypeError::New(env, "Second argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    std::string name = info[0].As<Napi::String>();
+    auto impl = get_sign(name);
+    if (impl == nullptr) {
+      Napi::Error::New(env, "No such implementation")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    if (material.byteLength != impl->privateKeySize) {
+      Napi::Error::New(env, "Invalid private key size")
+          .ThrowAsJavaScriptException();
+      return;
+    }
+
+    key = std::make_shared<AsymmetricKey<pqclean::sign::Algorithm>>(impl, AsymmetricKey<pqclean::sign::Algorithm>::Type::privateKey,
+                                          material.data, material.byteLength);
+  }
+
+  Napi::Value Sign(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 1) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    ArrayBufferSlice message;
+    if (!GetBufferSourceAsSlice(info[0], &message)) {
+      Napi::TypeError::New(env, "First argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    std::unique_ptr<unsigned char[]> messageCopy = std::make_unique<unsigned char[]>(message.byteLength);
+    std::copy(message.data, message.data + message.byteLength, &messageCopy[0]);
+
+    return SignatureWorker::Q(env, key, std::move(messageCopy), message.byteLength);
+  }
+
+  Napi::Value Export(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 0) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    auto& mat = this->key->material();
+    auto out = Napi::ArrayBuffer::New(env, mat.size());
+    std::copy(mat.begin(), mat.end(), reinterpret_cast<unsigned char*>(out.Data()));
+    return out;
+  }
+
+  Napi::Value GetAlgorithm(const Napi::CallbackInfo& info) {
+    return GetAlgorithmObject(Env(), key->algorithm());
+  }
+
+ private:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr key;
+};
+
+class SignKeyPairWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const pqclean::sign::Algorithm* impl) {
+    SignKeyPairWorker* worker = new SignKeyPairWorker(env, impl);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    AsymmetricKey<pqclean::sign::Algorithm>::Builder publicKey(impl, AsymmetricKey<pqclean::sign::Algorithm>::Type::publicKey);
+    AsymmetricKey<pqclean::sign::Algorithm>::Builder privateKey(impl, AsymmetricKey<pqclean::sign::Algorithm>::Type::privateKey);
+
+    if (impl->keypair(publicKey.data(), privateKey.data()) != 0) {
+      return SetError("failed to generate keypair");
+    }
+
+    this->publicKey = std::move(publicKey).release();
+    this->privateKey = std::move(privateKey).release();
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+    AddonData* addonData = env.GetInstanceData<AddonData>();
+
+    auto publicKeyContainer = addonData->asymmetricSignKeyContainerConstructor->New({});
+    AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(publicKeyContainer)->Embed(publicKey);
+
+    auto privateKeyContainer = addonData->asymmetricSignKeyContainerConstructor->New({});
+    AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(privateKeyContainer)->Embed(privateKey);
+
+    Napi::Object obj = Napi::Object::New(env);
+    obj.Set("publicKey", addonData->signPublicKeyConstructor->New({ publicKeyContainer }));
+    obj.Set("privateKey", addonData->signPrivateKeyConstructor->New({ privateKeyContainer }));
+
+    deferred.Resolve(obj);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  SignKeyPairWorker(Napi::Env env, const pqclean::sign::Algorithm* impl)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        impl(impl) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Input:
+  const pqclean::sign::Algorithm* impl;
+
+  // Outputs:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr publicKey;
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr privateKey;
+};
+
+Napi::Value GenerateSignKeyPair(const Napi::CallbackInfo& info) {
+  Napi::Env env = info.Env();
+
+  if (info.Length() != 1) {
+    Napi::TypeError::New(env, "Wrong number of arguments")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  if (!info[0].IsString()) {
+    Napi::TypeError::New(env, "First argument must be a string")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  std::string name = info[0].As<Napi::String>();
+  const pqclean::sign::Algorithm* impl = get_sign(name);
+  if (impl == nullptr) {
+    Napi::Error::New(env, "No such implementation")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  return SignKeyPairWorker::Q(env, impl);
+}
+
+Napi::Object InitKeyCentricSign(Napi::Env env, AddonData* addonData) {
+  Napi::Object obj = Napi::Object::New(env);
+
+  auto publicKeyClass = SignPublicKey::DefineClass(env, "PQCleanSignPublicKey", {
+    Napi::ObjectWrap<SignPublicKey>::InstanceAccessor("algorithm", &SignPublicKey::GetAlgorithm, nullptr, napi_enumerable),
+    Napi::ObjectWrap<SignPublicKey>::InstanceMethod("verify", &SignPublicKey::Verify),
+    Napi::ObjectWrap<SignPublicKey>::InstanceMethod("export", &SignPublicKey::Export)
+  });
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("PublicKey", publicKeyClass, napi_enumerable));
+
+  addonData->signPublicKeyConstructor = new Napi::FunctionReference();
+  *addonData->signPublicKeyConstructor = Napi::Persistent(publicKeyClass);
+
+  auto privateKeyClass = SignPrivateKey::DefineClass(env, "PQCleanSignPrivateKey", {
+    Napi::ObjectWrap<SignPrivateKey>::InstanceAccessor("algorithm", &SignPrivateKey::GetAlgorithm, nullptr, napi_enumerable),
+    Napi::ObjectWrap<SignPrivateKey>::InstanceMethod("sign", &SignPrivateKey::Sign),
+    Napi::ObjectWrap<SignPrivateKey>::InstanceMethod("export", &SignPrivateKey::Export)
+  });
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("PrivateKey", privateKeyClass, napi_enumerable));
+
+  addonData->signPrivateKeyConstructor = new Napi::FunctionReference();
+  *addonData->signPrivateKeyConstructor = Napi::Persistent(privateKeyClass);
+
+  auto asymmetricKeyContainerClass = AsymmetricKeyContainer<pqclean::sign::Algorithm>::DefineClass(env, "InternalSignKeyContainer", {});
+  addonData->asymmetricSignKeyContainerConstructor = new Napi::FunctionReference();
+  *addonData->asymmetricSignKeyContainerConstructor = Napi::Persistent(asymmetricKeyContainerClass);
+
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("generateKeyPair", Napi::Function::New<GenerateSignKeyPair>(env), napi_enumerable));
+
+  const auto& algorithms = pqclean::sign::algorithms();
+  Napi::Array supported_algorithms = Napi::Array::New(env, algorithms.size());
+  for (size_t i = 0; i < algorithms.size(); i++) {
+    supported_algorithms[i] = GetAlgorithmObject(env, &algorithms[i]);
+  }
+  obj.DefineProperty(Napi::PropertyDescriptor::Value("supportedAlgorithms", supported_algorithms, napi_enumerable));
+
+  return obj;
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   Napi::HandleScope scope(env);
 
   exports.Set("KEM", InitKEM(env));
   exports.Set("Sign", InitSign(env));
+
+  AddonData* addonData = new AddonData();
+  exports.Set("kem", InitKeyCentricKEM(env, addonData));
+  exports.Set("sign", InitKeyCentricSign(env, addonData));
+
+  env.SetInstanceData(addonData);
 
   return exports;
 }

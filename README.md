@@ -37,7 +37,191 @@ config variable `pqclean-backend`.
 You can read more about npm config variables
 [here](https://docs.npmjs.com/cli/v8/using-npm/config).
 
-## Example
+## Key-centric API
+
+This is the recommended API.
+
+### Example
+
+PQClean provides a consistent API for key encapsulation mechanisms. The Node.js
+bindings expose this through the `kem` namespace.
+
+```javascript
+const PQClean = require('pqclean');
+
+const {
+  publicKey,
+  privateKey
+} = await PQClean.kem.generateKeyPair('mceliece8192128');
+
+const { key, encryptedKey } = await publicKey.generateKey();
+console.log("Bob's key", Buffer.from(key).toString('hex'));
+
+const receivedKey = await privateKey.decryptKey(encryptedKey);
+console.log("Alice's key", Buffer.from(receivedKey).toString('hex'));
+```
+
+Similarly, PQClean's digital signature API is exposed through the `sign`
+namespace.
+
+```javascript
+const PQClean = require('pqclean');
+
+const { publicKey, privateKey } = PQClean.sign.generateKeyPair('falcon-1024');
+
+const message = Buffer.from('Hello world!');
+const signature = await privateKey.sign(message);
+
+const ok = await publicKey.verify(message, signature);
+console.assert(ok, 'signature is valid');
+```
+
+### `kem.generateKeyPair(name)`
+
+Generates a new key pair for the algorithm identified by `name`. Returns a
+`Promise` that resolves to an object with properties named `publicKey` and
+`privateKey`, which are instances of `kem.PublicKey` and `kem.PrivateKey`,
+respectively.
+
+### `kem.supportedAlgorithms`
+
+Array of all supported key encapsulation algorithms. Each algorithm is
+represented by an object with the following properties:
+
+* `name` - unique identifier (e.g., `'mceliece8192128'`).
+* `description` - display name (e.g., `'Classic McEliece 8192128'`).
+* `publicKeySize` - size of the public key, in bytes.
+* `privateKeySize` - size of the private key, in bytes.
+* `keySize` - size of the encapsulated key, in bytes.
+* `encryptedKeySize` - size of the ciphertext (encapsulated key), in bytes.
+
+### Class `kem.PublicKey`
+
+#### `new kem.PublicKey(name, bytes)`
+
+Imports a public key for the algorithm identified by `name`. The key material
+to be imported must be passed as a `BufferSource`.
+
+#### `publicKey.algorithm`
+
+Object describing the algorithm that this key can be used with. This property
+has the same structure as the elements of `kem.supportedAlgorithms` (see above).
+
+#### `publicKey.export()`
+
+Returns an `ArrayBuffer` containing the key material. The key can later be
+imported using `new kem.PublicKey(name, bytes)`.
+
+#### `publicKey.generateKey()`
+
+Generates a new shared secret key and encapsulates it using this public key.
+Returns a `Promise` that resolves to an object with properties named `key` and
+`encryptedKey`, which are the shared secret and the ciphertext (encapsulated
+key), respectively. Both are returned as `ArrayBuffer` instances.
+
+The size of the returned shared secret `key` is exactly
+`privateKey.algorithm.keySize` bytes.
+
+### Class `kem.PrivateKey`
+
+#### `new kem.PrivateKey(name, bytes)`
+
+Imports a private key for the algorithm identified by `name`. The key material
+to be imported must be passed as a `BufferSource`.
+
+#### `privateKey.algorithm`
+
+Object describing the algorithm that this key can be used with. This property
+has the same structure as the elements of `kem.supportedAlgorithms` (see above).
+
+#### `privateKey.export()`
+
+Returns an `ArrayBuffer` containing the key material. The key can later be
+imported using `new kem.PrivateKey(name, bytes)`.
+
+#### `privateKey.decryptKey(encryptedKey)`
+
+Decapsulates a previously encapsulated key given the ciphertext, which must be
+a `BufferSource`. Returns a `Promise` that resolves to the shared secret as an
+`ArrayBuffer`.
+
+The size of the returned shared secret is exactly
+`privateKey.algorithm.keySize` bytes.
+
+### `sign.generateKeyPair(name)`
+
+Generates a new key pair for the algorithm identified by `name`. Returns a
+`Promise` that resolves to an object with properties named `publicKey` and
+`privateKey`, which are instances of `sign.PublicKey` and `sign.PrivateKey`,
+respectively.
+
+### `sign.supportedAlgorithms`
+
+Array of all supported digital signature algorithms. Each algorithm is
+represented by an object with the following properties:
+
+* `name` - unique identifier (e.g., `'dilithium2'`).
+* `description` - display name (e.g., `'Dilithium2'`).
+* `publicKeySize` - size of the public key, in bytes.
+* `privateKeySize` - size of the private key, in bytes.
+* `signatureSize` - maximum size of a signature, in bytes.
+
+### Class `sign.PublicKey`
+
+#### `new sign.PublicKey(name, bytes)`
+
+Imports a public key for the algorithm identified by `name`. The key material
+to be imported must be passed as a `BufferSource`.
+
+#### `publicKey.algorithm`
+
+Object describing the algorithm that this key can be used with. This property
+has the same structure as the elements of `sign.supportedAlgorithms` (see
+above).
+
+#### `publicKey.export()`
+
+Returns an `ArrayBuffer` containing the key material. The key can later be
+imported using `new sign.PublicKey(name, bytes)`.
+
+#### `publicKey.verify(message, signature)`
+
+Verifies that the given `signature` is correct for the given `message` using
+this public key. Both arguments must be `BufferSource`s. Returns a `Promise`
+that resolves to `true` if the signature is valid, and to `false` otherwise.
+
+### Class `sign.PrivateKey`
+
+#### `new sign.PrivateKey(name, bytes)`
+
+Imports a private key for the algorithm identified by `name`. The key material
+to be imported must be passed as a `BufferSource`.
+
+#### `privateKey.algorithm`
+
+Object describing the algorithm that this key can be used with. This property
+has the same structure as the elements of `sign.supportedAlgorithms` (see
+above).
+
+#### `privateKey.export()`
+
+Returns an `ArrayBuffer` containing the key material. The key can later be
+imported using `new sign.PrivateKey(name, bytes)`.
+
+#### `privateKey.sign(message)`
+
+Computes a signature for the given `message` using this private key. The
+`message` must be a `BufferSource`. Returns a `Promise` that resolves to an
+`ArrayBuffer`, which is the signature.
+
+The size of the signature is at most `privateKey.algorithm.signatureSize`.
+
+## Classic API
+
+The classic API is compatible with [node-mceliece-nist][]. It uses Node.js
+`Buffer`s and callback-style functions instead of `Promise`s.
+
+### Example
 
 PQClean provides a consistent API for key encapsulation mechanisms. The Node.js
 bindings expose this through the `KEM` class.
@@ -69,10 +253,6 @@ const signature = falcon.sign(privateKey, message);
 const ok = falcon.verify(publicKey, message, signature);
 console.assert(ok, 'signature is valid');
 ```
-
-## API
-
-The package exports two classes: `KEM` and `Sign`.
 
 ### Class `KEM`
 
@@ -190,3 +370,4 @@ implementations.
 
 [PQClean]: https://github.com/PQClean/PQClean
 [nodejs/node#43630]: https://github.com/nodejs/node/issues/43630
+[node-mceliece-nist]: https://github.com/tniessen/node-mceliece-nist
