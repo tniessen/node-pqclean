@@ -18,8 +18,8 @@ Object.freeze(KEM.supportedAlgorithms);
 Object.freeze(Sign.supportedAlgorithms);
 
 Object.defineProperties(module.exports, {
-  kem: { value: kem },
-  sign: { value: sign },
-  KEM: { value: KEM },
-  Sign: { value: Sign }
+  kem: { value: kem, enumerable: true },
+  sign: { value: sign, enumerable: true },
+  KEM: { value: KEM, enumerable: true },
+  Sign: { value: Sign, enumerable: true }
 });
