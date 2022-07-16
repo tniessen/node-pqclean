@@ -714,14 +714,15 @@ Napi::Function InitSign(Napi::Env env) {
 // Key-centric API
 ////////////////////////////////////////////////////////////////////////////////
 
-struct AddonData {
-  Napi::FunctionReference* kemPublicKeyConstructor;
-  Napi::FunctionReference* kemPrivateKeyConstructor;
-  Napi::FunctionReference* asymmetricKEMKeyContainerConstructor;
+struct KeyPairConstructors {
+  Napi::FunctionReference* publicKeyConstructor;
+  Napi::FunctionReference* privateKeyConstructor;
+  Napi::FunctionReference* asymmetricKeyContainerConstructor;
+};
 
-  Napi::FunctionReference* signPublicKeyConstructor;
-  Napi::FunctionReference* signPrivateKeyConstructor;
-  Napi::FunctionReference* asymmetricSignKeyContainerConstructor;
+struct AddonData {
+  KeyPairConstructors kemKeyPairConstructors;
+  KeyPairConstructors signKeyPairConstructors;
 };
 
 // TODO: replace with std::u8string_view (C++20) at some point in the future
@@ -857,6 +858,22 @@ class AsymmetricKeyContainer : public Napi::ObjectWrap<AsymmetricKeyContainer<Al
   typename AsymmetricKey<Algorithm>::Ptr key;
 };
 
+template <typename Algorithm>
+void GetKeyPairConstructors(
+    AddonData* addonData, const KeyPairConstructors** constructors);
+
+template <>
+void GetKeyPairConstructors<pqclean::kem::Algorithm>(
+    AddonData* addonData, const KeyPairConstructors** constructors) {
+  *constructors = &addonData->kemKeyPairConstructors;
+}
+
+template <>
+void GetKeyPairConstructors<pqclean::sign::Algorithm>(
+    AddonData* addonData, const KeyPairConstructors** constructors) {
+  *constructors = &addonData->signKeyPairConstructors;
+}
+
 class KeyEncapsulationWorker : public Napi::AsyncWorker {
  public:
   static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::kem::Algorithm>::Ptr& publicKey) {
@@ -970,7 +987,7 @@ class KEMPublicKey : public Napi::ObjectWrap<KEMPublicKey> {
     if (info.Length() == 1 && info[0].IsObject()) {
       Napi::Object container = info[0].As<Napi::Object>();
       AddonData* addonData = env.GetInstanceData<AddonData>();
-      if (container.InstanceOf(addonData->asymmetricKEMKeyContainerConstructor->Value())) {
+      if (container.InstanceOf(addonData->kemKeyPairConstructors.asymmetricKeyContainerConstructor->Value())) {
         key = AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(container)->GetEmbedded();
         return;
       }
@@ -1060,7 +1077,7 @@ class KEMPrivateKey : public Napi::ObjectWrap<KEMPrivateKey> {
     if (info.Length() == 1 && info[0].IsObject()) {
       Napi::Object container = info[0].As<Napi::Object>();
       AddonData* addonData = env.GetInstanceData<AddonData>();
-      if (container.InstanceOf(addonData->asymmetricKEMKeyContainerConstructor->Value())) {
+      if (container.InstanceOf(addonData->kemKeyPairConstructors.asymmetricKeyContainerConstructor->Value())) {
         key = AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(container)->GetEmbedded();
         return;
       }
@@ -1154,18 +1171,19 @@ class KEMPrivateKey : public Napi::ObjectWrap<KEMPrivateKey> {
   AsymmetricKey<pqclean::kem::Algorithm>::Ptr key;
 };
 
+template <typename Algorithm>
 class KeyPairWorker : public Napi::AsyncWorker {
  public:
-  static Napi::Value Q(Napi::Env env, const pqclean::kem::Algorithm* impl) {
-    KeyPairWorker* worker = new KeyPairWorker(env, impl);
+  static Napi::Value Q(Napi::Env env, const Algorithm* impl) {
+    KeyPairWorker<Algorithm>* worker = new KeyPairWorker<Algorithm>(env, impl);
     worker->Queue();
     return worker->deferred.Promise();
   }
 
  protected:
   void Execute() override {
-    AsymmetricKey<pqclean::kem::Algorithm>::Builder publicKey(impl, AsymmetricKey<pqclean::kem::Algorithm>::Type::publicKey);
-    AsymmetricKey<pqclean::kem::Algorithm>::Builder privateKey(impl, AsymmetricKey<pqclean::kem::Algorithm>::Type::privateKey);
+    typename AsymmetricKey<Algorithm>::Builder publicKey(impl, AsymmetricKey<Algorithm>::Type::publicKey);
+    typename AsymmetricKey<Algorithm>::Builder privateKey(impl, AsymmetricKey<Algorithm>::Type::privateKey);
 
     if (impl->keypair(publicKey.data(), privateKey.data()) != 0) {
       return SetError("failed to generate keypair");
@@ -1179,15 +1197,18 @@ class KeyPairWorker : public Napi::AsyncWorker {
     Napi::Env env = Env();
     AddonData* addonData = env.GetInstanceData<AddonData>();
 
-    auto publicKeyContainer = addonData->asymmetricKEMKeyContainerConstructor->New({});
-    AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(publicKeyContainer)->Embed(publicKey);
+    const KeyPairConstructors* ctors;
+    GetKeyPairConstructors<Algorithm>(addonData, &ctors);
 
-    auto privateKeyContainer = addonData->asymmetricKEMKeyContainerConstructor->New({});
-    AsymmetricKeyContainer<pqclean::kem::Algorithm>::Unwrap(privateKeyContainer)->Embed(privateKey);
+    auto publicKeyContainer = ctors->asymmetricKeyContainerConstructor->New({});
+    AsymmetricKeyContainer<Algorithm>::Unwrap(publicKeyContainer)->Embed(publicKey);
+
+    auto privateKeyContainer = ctors->asymmetricKeyContainerConstructor->New({});
+    AsymmetricKeyContainer<Algorithm>::Unwrap(privateKeyContainer)->Embed(privateKey);
 
     Napi::Object obj = Napi::Object::New(env);
-    obj.Set("publicKey", addonData->kemPublicKeyConstructor->New({ publicKeyContainer }));
-    obj.Set("privateKey", addonData->kemPrivateKeyConstructor->New({ privateKeyContainer }));
+    obj.Set("publicKey", ctors->publicKeyConstructor->New({ publicKeyContainer }));
+    obj.Set("privateKey", ctors->privateKeyConstructor->New({ privateKeyContainer }));
 
     deferred.Resolve(obj);
   }
@@ -1197,7 +1218,7 @@ class KeyPairWorker : public Napi::AsyncWorker {
   }
 
  private:
-  KeyPairWorker(Napi::Env env, const pqclean::kem::Algorithm* impl)
+  KeyPairWorker(Napi::Env env, const Algorithm* impl)
       : Napi::AsyncWorker(env),
         deferred(Napi::Promise::Deferred::New(env)),
         impl(impl) {}
@@ -1205,11 +1226,11 @@ class KeyPairWorker : public Napi::AsyncWorker {
   Napi::Promise::Deferred deferred;
 
   // Input:
-  const pqclean::kem::Algorithm* impl;
+  const Algorithm* impl;
 
   // Outputs:
-  AsymmetricKey<pqclean::kem::Algorithm>::Ptr publicKey;
-  AsymmetricKey<pqclean::kem::Algorithm>::Ptr privateKey;
+  typename AsymmetricKey<Algorithm>::Ptr publicKey;
+  typename AsymmetricKey<Algorithm>::Ptr privateKey;
 };
 
 Napi::Value GenerateKEMKeyPair(const Napi::CallbackInfo& info) {
@@ -1235,11 +1256,12 @@ Napi::Value GenerateKEMKeyPair(const Napi::CallbackInfo& info) {
     return env.Undefined();
   }
 
-  return KeyPairWorker::Q(env, impl);
+  return KeyPairWorker<pqclean::kem::Algorithm>::Q(env, impl);
 }
 
 Napi::Object InitKeyCentricKEM(Napi::Env env, AddonData* addonData) {
   Napi::Object obj = Napi::Object::New(env);
+  auto ctors = &addonData->kemKeyPairConstructors;
 
   auto publicKeyClass = KEMPublicKey::DefineClass(env, "PQCleanKEMPublicKey", {
     Napi::ObjectWrap<KEMPublicKey>::InstanceAccessor("algorithm", &KEMPublicKey::GetAlgorithm, nullptr, napi_enumerable),
@@ -1248,8 +1270,8 @@ Napi::Object InitKeyCentricKEM(Napi::Env env, AddonData* addonData) {
   });
   obj.DefineProperty(Napi::PropertyDescriptor::Value("PublicKey", publicKeyClass, napi_enumerable));
 
-  addonData->kemPublicKeyConstructor = new Napi::FunctionReference();
-  *addonData->kemPublicKeyConstructor = Napi::Persistent(publicKeyClass);
+  ctors->publicKeyConstructor = new Napi::FunctionReference();
+  *ctors->publicKeyConstructor = Napi::Persistent(publicKeyClass);
 
   auto privateKeyClass = KEMPrivateKey::DefineClass(env, "PQCleanKEMPrivateKey", {
     Napi::ObjectWrap<KEMPrivateKey>::InstanceAccessor("algorithm", &KEMPrivateKey::GetAlgorithm, nullptr, napi_enumerable),
@@ -1258,12 +1280,12 @@ Napi::Object InitKeyCentricKEM(Napi::Env env, AddonData* addonData) {
   });
   obj.DefineProperty(Napi::PropertyDescriptor::Value("PrivateKey", privateKeyClass, napi_enumerable));
 
-  addonData->kemPrivateKeyConstructor = new Napi::FunctionReference();
-  *addonData->kemPrivateKeyConstructor = Napi::Persistent(privateKeyClass);
+  ctors->privateKeyConstructor = new Napi::FunctionReference();
+  *ctors->privateKeyConstructor = Napi::Persistent(privateKeyClass);
 
   auto asymmetricKeyContainerClass = AsymmetricKeyContainer<pqclean::kem::Algorithm>::DefineClass(env, "InternalKEMKeyContainer", {});
-  addonData->asymmetricKEMKeyContainerConstructor = new Napi::FunctionReference();
-  *addonData->asymmetricKEMKeyContainerConstructor = Napi::Persistent(asymmetricKeyContainerClass);
+  ctors->asymmetricKeyContainerConstructor = new Napi::FunctionReference();
+  *ctors->asymmetricKeyContainerConstructor = Napi::Persistent(asymmetricKeyContainerClass);
 
   obj.DefineProperty(Napi::PropertyDescriptor::Value("generateKeyPair", Napi::Function::New<GenerateKEMKeyPair>(env), napi_enumerable));
 
@@ -1397,7 +1419,7 @@ class SignPublicKey : public Napi::ObjectWrap<SignPublicKey> {
     if (info.Length() == 1 && info[0].IsObject()) {
       Napi::Object container = info[0].As<Napi::Object>();
       AddonData* addonData = env.GetInstanceData<AddonData>();
-      if (container.InstanceOf(addonData->asymmetricSignKeyContainerConstructor->Value())) {
+      if (container.InstanceOf(addonData->signKeyPairConstructors.asymmetricKeyContainerConstructor->Value())) {
         key = AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(container)->GetEmbedded();
         return;
       }
@@ -1513,7 +1535,7 @@ class SignPrivateKey : public Napi::ObjectWrap<SignPrivateKey> {
     if (info.Length() == 1 && info[0].IsObject()) {
       Napi::Object container = info[0].As<Napi::Object>();
       AddonData* addonData = env.GetInstanceData<AddonData>();
-      if (container.InstanceOf(addonData->asymmetricSignKeyContainerConstructor->Value())) {
+      if (container.InstanceOf(addonData->signKeyPairConstructors.asymmetricKeyContainerConstructor->Value())) {
         key = AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(container)->GetEmbedded();
         return;
       }
@@ -1601,64 +1623,6 @@ class SignPrivateKey : public Napi::ObjectWrap<SignPrivateKey> {
   AsymmetricKey<pqclean::sign::Algorithm>::Ptr key;
 };
 
-class SignKeyPairWorker : public Napi::AsyncWorker {
- public:
-  static Napi::Value Q(Napi::Env env, const pqclean::sign::Algorithm* impl) {
-    SignKeyPairWorker* worker = new SignKeyPairWorker(env, impl);
-    worker->Queue();
-    return worker->deferred.Promise();
-  }
-
- protected:
-  void Execute() override {
-    AsymmetricKey<pqclean::sign::Algorithm>::Builder publicKey(impl, AsymmetricKey<pqclean::sign::Algorithm>::Type::publicKey);
-    AsymmetricKey<pqclean::sign::Algorithm>::Builder privateKey(impl, AsymmetricKey<pqclean::sign::Algorithm>::Type::privateKey);
-
-    if (impl->keypair(publicKey.data(), privateKey.data()) != 0) {
-      return SetError("failed to generate keypair");
-    }
-
-    this->publicKey = std::move(publicKey).release();
-    this->privateKey = std::move(privateKey).release();
-  }
-
-  virtual void OnOK() override {
-    Napi::Env env = Env();
-    AddonData* addonData = env.GetInstanceData<AddonData>();
-
-    auto publicKeyContainer = addonData->asymmetricSignKeyContainerConstructor->New({});
-    AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(publicKeyContainer)->Embed(publicKey);
-
-    auto privateKeyContainer = addonData->asymmetricSignKeyContainerConstructor->New({});
-    AsymmetricKeyContainer<pqclean::sign::Algorithm>::Unwrap(privateKeyContainer)->Embed(privateKey);
-
-    Napi::Object obj = Napi::Object::New(env);
-    obj.Set("publicKey", addonData->signPublicKeyConstructor->New({ publicKeyContainer }));
-    obj.Set("privateKey", addonData->signPrivateKeyConstructor->New({ privateKeyContainer }));
-
-    deferred.Resolve(obj);
-  }
-
-  virtual void OnError(const Napi::Error& e) override {
-    deferred.Reject(e.Value());
-  }
-
- private:
-  SignKeyPairWorker(Napi::Env env, const pqclean::sign::Algorithm* impl)
-      : Napi::AsyncWorker(env),
-        deferred(Napi::Promise::Deferred::New(env)),
-        impl(impl) {}
-
-  Napi::Promise::Deferred deferred;
-
-  // Input:
-  const pqclean::sign::Algorithm* impl;
-
-  // Outputs:
-  AsymmetricKey<pqclean::sign::Algorithm>::Ptr publicKey;
-  AsymmetricKey<pqclean::sign::Algorithm>::Ptr privateKey;
-};
-
 Napi::Value GenerateSignKeyPair(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
@@ -1682,11 +1646,12 @@ Napi::Value GenerateSignKeyPair(const Napi::CallbackInfo& info) {
     return env.Undefined();
   }
 
-  return SignKeyPairWorker::Q(env, impl);
+  return KeyPairWorker<pqclean::sign::Algorithm>::Q(env, impl);
 }
 
 Napi::Object InitKeyCentricSign(Napi::Env env, AddonData* addonData) {
   Napi::Object obj = Napi::Object::New(env);
+  auto ctors = &addonData->signKeyPairConstructors;
 
   auto publicKeyClass = SignPublicKey::DefineClass(env, "PQCleanSignPublicKey", {
     Napi::ObjectWrap<SignPublicKey>::InstanceAccessor("algorithm", &SignPublicKey::GetAlgorithm, nullptr, napi_enumerable),
@@ -1695,8 +1660,8 @@ Napi::Object InitKeyCentricSign(Napi::Env env, AddonData* addonData) {
   });
   obj.DefineProperty(Napi::PropertyDescriptor::Value("PublicKey", publicKeyClass, napi_enumerable));
 
-  addonData->signPublicKeyConstructor = new Napi::FunctionReference();
-  *addonData->signPublicKeyConstructor = Napi::Persistent(publicKeyClass);
+  ctors->publicKeyConstructor = new Napi::FunctionReference();
+  *ctors->publicKeyConstructor = Napi::Persistent(publicKeyClass);
 
   auto privateKeyClass = SignPrivateKey::DefineClass(env, "PQCleanSignPrivateKey", {
     Napi::ObjectWrap<SignPrivateKey>::InstanceAccessor("algorithm", &SignPrivateKey::GetAlgorithm, nullptr, napi_enumerable),
@@ -1705,12 +1670,12 @@ Napi::Object InitKeyCentricSign(Napi::Env env, AddonData* addonData) {
   });
   obj.DefineProperty(Napi::PropertyDescriptor::Value("PrivateKey", privateKeyClass, napi_enumerable));
 
-  addonData->signPrivateKeyConstructor = new Napi::FunctionReference();
-  *addonData->signPrivateKeyConstructor = Napi::Persistent(privateKeyClass);
+  ctors->privateKeyConstructor = new Napi::FunctionReference();
+  *ctors->privateKeyConstructor = Napi::Persistent(privateKeyClass);
 
   auto asymmetricKeyContainerClass = AsymmetricKeyContainer<pqclean::sign::Algorithm>::DefineClass(env, "InternalSignKeyContainer", {});
-  addonData->asymmetricSignKeyContainerConstructor = new Napi::FunctionReference();
-  *addonData->asymmetricSignKeyContainerConstructor = Napi::Persistent(asymmetricKeyContainerClass);
+  ctors->asymmetricKeyContainerConstructor = new Napi::FunctionReference();
+  *ctors->asymmetricKeyContainerConstructor = Napi::Persistent(asymmetricKeyContainerClass);
 
   obj.DefineProperty(Napi::PropertyDescriptor::Value("generateKeyPair", Napi::Function::New<GenerateSignKeyPair>(env), napi_enumerable));
 
