@@ -502,7 +502,8 @@ class PQCleanKEMPublicKey {
     if (key instanceof ArrayBuffer) {
       this.#material = key.slice(0);
     } else if (ArrayBuffer.isView(key)) {
-      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+      this.#material =
+          key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength);
     } else {
       throw new TypeError('Second argument must be a BufferSource');
     }
@@ -565,7 +566,8 @@ class PQCleanKEMPrivateKey {
     if (key instanceof ArrayBuffer) {
       this.#material = key.slice(0);
     } else if (ArrayBuffer.isView(key)) {
-      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+      this.#material =
+          key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength);
     } else {
       throw new TypeError('Second argument must be a BufferSource');
     }
@@ -681,7 +683,8 @@ class PQCleanSignPublicKey {
     if (key instanceof ArrayBuffer) {
       this.#material = key.slice(0);
     } else if (ArrayBuffer.isView(key)) {
-      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+      this.#material =
+          key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength);
     } else {
       throw new TypeError('Second argument must be a BufferSource');
     }
@@ -777,7 +780,8 @@ class PQCleanSignPrivateKey {
     if (key instanceof ArrayBuffer) {
       this.#material = key.slice(0);
     } else if (ArrayBuffer.isView(key)) {
-      this.#material = key.buffer.slice(key.byteOffset, key.byteLength);
+      this.#material =
+          key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength);
     } else {
       throw new TypeError('Second argument must be a BufferSource');
     }
