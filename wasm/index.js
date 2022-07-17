@@ -1,12 +1,15 @@
 'use strict';
 
 const { randomFillSync } = require('node:crypto');
+const os = require('node:os');
+const { Worker } = require('node:worker_threads');
 
 const algorithms = require('./gen/algorithms.json');
 
-// The WebAssembly backend currently does not support background tasks, instead,
-// async operations are simply scheduled using setImmediate.
-// TODO: fix that (e.g., using worker threads)
+// The WebAssembly backend currently only supports background tasks through the
+// newer key-centric API. The classic API instead simply schedules async work
+// using setImmediate.
+// TODO: either fix that or deprecate the classic API eventually.
 
 const wasm = new WebAssembly.Module(require('fs').readFileSync(`${__dirname}/gen/pqclean.wasm`));
 const instance = new WebAssembly.Instance(wasm, {
@@ -25,7 +28,6 @@ const instance = new WebAssembly.Instance(wasm, {
 const mem = () => Buffer.from(instance.exports.memory.buffer);
 const store = (ptr, bytes) => mem().set(bytes, ptr);
 const loadCopy = (ptr, size) => Uint8Array.prototype.slice.call(mem(), ptr, ptr + size);
-const loadSlice = (ptr, size) => instance.exports.memory.buffer.slice(ptr, ptr + size);
 const storeSize = (ptr, value) => mem().writeUInt32LE(value, ptr);
 const loadSize = (ptr) => mem().readUInt32LE(ptr);
 
@@ -480,9 +482,53 @@ Object.assign(module.exports, { KEM, Sign });
 // Key-centric API
 ////////////////////////////////////////////////////////////////////////////////
 
-function fakeAsync(fn) {
+const maxWorkers = os.cpus().length;
+const allWorkers = [];
+const idleWorkers = [];
+const queue = [];
+
+function markWorkerIdle(worker) {
+  const next = queue.shift();
+  if (next) {
+    runInIdleWorker(worker, next.task, next.resolve);
+  } else {
+    idleWorkers.push(worker);
+    worker.unref();
+  }
+}
+
+function runInIdleWorker(worker, task, resolve, reject) {
+  worker.ref();
+  worker.once('message', (response) => {
+    markWorkerIdle(worker);
+    if (response.memoryAllocationFailed) {
+      reject(new Error('Memory allocation failed'));
+    } else {
+      resolve(response);
+    }
+  });
+  worker.postMessage(task);
+}
+
+function runInWorker(task) {
   return new Promise((resolve, reject) => {
-    setImmediate(() => fn().then(resolve, reject));
+    const idleWorker = idleWorkers.shift();
+    if (idleWorker !== undefined) {
+      // There is a worker that is currently idle. Use it.
+      runInIdleWorker(idleWorker, task, resolve, reject);
+    } else {
+      // No worker is idle right now, so add to the queue.
+      const queueSize = queue.push({ task, resolve, reject });
+      if (queueSize > allWorkers.length ** 2 && allWorkers.length < maxWorkers) {
+        // There are too many tasks queued, spin up a new worker.
+        const newWorker = new Worker(`${__dirname}/worker.js`);
+        // Add the worker to the list of workers to prevent more from being
+        // created immediately, but only mark it as idle once it is online.
+        allWorkers.push(newWorker);
+        // TODO: error handling for workers
+        newWorker.once('online', () => markWorkerIdle(newWorker));
+      }
+    }
   });
 }
 
@@ -530,22 +576,18 @@ class PQCleanKEMPublicKey {
       throw new TypeError('Wrong number of arguments');
     }
 
-    return fakeAsync(async () => {
-      const { publicKeySize, keySize, encryptedKeySize } = this.#algorithm.properties;
-
-      return scopedAlloc(publicKeySize + keySize + encryptedKeySize, (ptr) => {
-        const publicKeyPtr = ptr, keyPtr = ptr + publicKeySize, encryptedKeyPtr = ptr + publicKeySize + keySize;
-        store(publicKeyPtr, new Uint8Array(this.#material));
-
-        const ret = instance.exports[this.#algorithm.functions.enc](encryptedKeyPtr, keyPtr, publicKeyPtr);
-        if (ret !== 0) {
-          throw new Error('Encapsulation failed');
-        }
-
-        const key = loadSlice(keyPtr, keySize);
-        const encryptedKey = loadSlice(encryptedKeyPtr, encryptedKeySize);
-        return { key, encryptedKey };
-      });
+    const { keySize, encryptedKeySize } = this.#algorithm.properties;
+    return runInWorker({
+      fn: this.#algorithm.functions.enc,
+      inputs: [this.#material],
+      outputs: [{ type: 'ArrayBuffer', byteLength: encryptedKeySize },
+                { type: 'ArrayBuffer', byteLength: keySize }]
+    }).then(({ result, outputs }) => {
+      if (result !== 0) {
+        return Promise.reject(new Error('Encapsulation failed'));
+      } else {
+        return Promise.resolve({ key: outputs[1], encryptedKey: outputs[0] });
+      }
     });
   }
 }
@@ -594,41 +636,31 @@ class PQCleanKEMPrivateKey {
       throw new TypeError('Wrong number of arguments');
     }
 
-    let encryptedKeyTypedArray;
+    let encryptedKeyArrayBuffer;
     if (encryptedKey instanceof ArrayBuffer) {
-      encryptedKeyTypedArray = new Uint8Array(encryptedKey);
+      encryptedKeyArrayBuffer = encryptedKey.slice();
     } else if (ArrayBuffer.isView(encryptedKey)) {
-      if (encryptedKey instanceof DataView) {
-        encryptedKeyTypedArray = new Uint8Array(encryptedKey.buffer, encryptedKey.byteOffset, encryptedKey.byteLength);
-      } else {
-        encryptedKeyTypedArray = encryptedKey;
-      }
+      encryptedKeyArrayBuffer = encryptedKey.buffer.slice(
+          encryptedKey.byteOffset, encryptedKey.byteOffset + encryptedKey.byteLength);
     } else {
       throw new TypeError('First argument must be a BufferSource');
     }
 
-    const { privateKeySize, keySize, encryptedKeySize } = this.#algorithm.properties;
-    if (encryptedKeyTypedArray.byteLength !== encryptedKeySize) {
+    const { keySize, encryptedKeySize } = this.#algorithm.properties;
+    if (encryptedKeyArrayBuffer.byteLength !== encryptedKeySize) {
       throw new Error('Invalid ciphertext size');
     }
 
-    return scopedAlloc(encryptedKeySize, (encryptedKeyPtr, escapeEncryptedKey) => {
-      store(encryptedKeyPtr, encryptedKeyTypedArray);
-
-      const encryptedKeyContext = escapeEncryptedKey();
-      return fakeAsync(async () => encryptedKeyContext(() => {
-        return scopedAlloc(privateKeySize + keySize, (ptr) => {
-          const privateKeyPtr = ptr, keyPtr = ptr + privateKeySize;
-          store(privateKeyPtr, new Uint8Array(this.#material));
-
-          const ret = instance.exports[this.#algorithm.functions.dec](keyPtr, encryptedKeyPtr, privateKeyPtr);
-          if (ret !== 0) {
-            throw new Error('Decryption failed');
-          }
-
-          return loadSlice(keyPtr, keySize);
-        });
-      }));
+    return runInWorker({
+      fn: this.#algorithm.functions.dec,
+      inputs: [encryptedKeyArrayBuffer, this.#material],
+      outputs: [{ type: 'ArrayBuffer', byteLength: keySize }]
+    }).then(({ result, outputs }) => {
+      if (result !== 0) {
+        return Promise.reject(new Error('Decryption failed'));
+      } else {
+        return Promise.resolve(outputs[0]);
+      }
     });
   }
 }
@@ -647,23 +679,23 @@ function generateKEMKeyPair(name) {
     throw new Error('No such implementation');
   }
 
-  return fakeAsync(async () => {
-    const { privateKeySize, publicKeySize } = algorithm.properties;
+  const { publicKeySize, privateKeySize } = algorithm.properties;
 
-    return scopedAlloc(privateKeySize + publicKeySize, (ptr) => {
-      const privateKeyPtr = ptr, publicKeyPtr = ptr + privateKeySize;
-      const ret = instance.exports[algorithm.functions.keypair](publicKeyPtr, privateKeyPtr);
-      if (ret !== 0) {
-        throw new Error('Failed to generate keypair');
-      }
-
-      // TODO: avoid all the copying, maybe just maintain a pointer to the
-      // WebAssembly memory.
-      return {
-        publicKey: new PQCleanKEMPublicKey(name, loadSlice(publicKeyPtr, publicKeySize)),
-        privateKey: new PQCleanKEMPrivateKey(name, loadSlice(privateKeyPtr, privateKeySize))
-      };
-    });
+  return runInWorker({
+    fn: algorithm.functions.keypair,
+    inputs: [],
+    outputs: [{ type: 'ArrayBuffer', byteLength: publicKeySize},
+              { type: 'ArrayBuffer', byteLength: privateKeySize } ]
+  }).then(({ result, outputs }) => {
+    if (result !== 0) {
+      return Promise.reject(new Error('Failed to generate keypair'));
+    } else {
+      // TODO: avoid copying the output ArrayBuffers
+      return Promise.resolve({
+        publicKey: new PQCleanKEMPublicKey(name, outputs[0]),
+        privateKey: new PQCleanKEMPrivateKey(name, outputs[1])
+      });
+    }
   });
 }
 
@@ -711,56 +743,43 @@ class PQCleanSignPublicKey {
       throw new TypeError('Wrong number of arguments');
     }
 
-    let messageTypedArray;
+    let messageArrayBuffer;
     if (message instanceof ArrayBuffer) {
-      messageTypedArray = new Uint8Array(message);
+      messageArrayBuffer = message.slice();
     } else if (ArrayBuffer.isView(message)) {
-      if (message instanceof DataView) {
-        messageTypedArray = new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
-      } else {
-        messageTypedArray = message;
-      }
+      messageArrayBuffer = message.buffer.slice(
+          message.byteOffset, message.byteOffset + message.byteLength);
     } else {
       throw new TypeError('First argument must be a BufferSource');
     }
 
-    let signatureTypedArray;
+    let signatureArrayBuffer;
     if (signature instanceof ArrayBuffer) {
-      signatureTypedArray = new Uint8Array(signature);
+      signatureArrayBuffer = signature.slice();
     } else if (ArrayBuffer.isView(signature)) {
-      if (signature instanceof DataView) {
-        signatureTypedArray = new Uint8Array(signature.buffer, signature.byteOffset, signature.byteLength);
-      } else {
-        signatureTypedArray = signature;
-      }
+      signatureArrayBuffer = signature.buffer.slice(
+          signature.byteOffset, signature.byteOffset + signature.byteLength);
     } else {
       throw new TypeError('Second argument must be a BufferSource');
     }
 
-    const messageSize = messageTypedArray.byteLength;
-    const signatureSize = signatureTypedArray.byteLength;
-
-    const { publicKeySize, signatureSize: maxSignatureSize } = this.#algorithm.properties;
-
-    if (signatureSize > maxSignatureSize) {
+    const { signatureSize: maxSignatureSize } = this.#algorithm.properties;
+    if (signatureArrayBuffer.byteLength > maxSignatureSize) {
       throw new Error('Invalid signature size');
     }
 
-    return scopedAlloc(messageSize + signatureSize, (inputPtr, escapeInput) => {
-      const messagePtr = inputPtr, signaturePtr = inputPtr + messageSize;
-      store(messagePtr, messageTypedArray);
-      store(signaturePtr, signatureTypedArray);
-
-      const inputContext = escapeInput();
-      return fakeAsync(async () => inputContext(() => {
-        return scopedAlloc(publicKeySize, (publicKeyPtr) => {
-          store(publicKeyPtr, new Uint8Array(this.#material));
-
-          // TODO: can we distinguish verification errors from other internal errors?
-          return 0 === instance.exports[this.#algorithm.functions.verify](signaturePtr, signatureSize, messagePtr, messageSize, publicKeyPtr);
-        });
-      }));
-    });
+    return runInWorker({
+      fn: this.#algorithm.functions.verify,
+      inputs: [
+        signatureArrayBuffer, signatureArrayBuffer.byteLength,
+        messageArrayBuffer, messageArrayBuffer.byteLength,
+        this.#material
+      ],
+      outputs: []
+    }).then(({ result }) => {
+      // TODO: can we distinguish verification errors from other internal errors?
+      return Promise.resolve(result === 0);
+    })
   }
 }
 
@@ -808,45 +827,37 @@ class PQCleanSignPrivateKey {
       throw new TypeError('Wrong number of arguments');
     }
 
-    let messageTypedArray;
+    let messageArrayBuffer;
     if (message instanceof ArrayBuffer) {
-      messageTypedArray = new Uint8Array(message);
+      messageArrayBuffer = message.slice();
     } else if (ArrayBuffer.isView(message)) {
-      if (message instanceof DataView) {
-        messageTypedArray = new Uint8Array(message.buffer, message.byteOffset, message.byteLength);
-      } else {
-        messageTypedArray = message;
-      }
+      messageArrayBuffer = message.buffer.slice(
+          message.byteOffset, message.byteOffset + message.byteLength);
     } else {
       throw new TypeError('First argument must be a BufferSource');
     }
 
-    const { privateKeySize, signatureSize } = this.#algorithm.properties;
+    const { signatureSize } = this.#algorithm.properties;
+    const messageSize = messageArrayBuffer.byteLength;
 
-    const messageSize = messageTypedArray.byteLength;
-    return scopedAlloc(messageSize, (messagePtr, escapeMessage) => {
-      store(messagePtr, messageTypedArray);
-
-      const messageContext = escapeMessage();
-      return fakeAsync(async () => messageContext(() => {
-        return scopedAlloc(privateKeySize + 4 + signatureSize, (ptr) => {
-          const privateKeyPtr = ptr, signatureSizePtr = ptr + privateKeySize, signaturePtr = ptr + privateKeySize + 4;
-          store(privateKeyPtr, new Uint8Array(this.#material));
-          storeSize(signatureSizePtr, signatureSize);
-
-          const ret = instance.exports[this.#algorithm.functions.signature](signaturePtr, signatureSizePtr, messagePtr, messageSize, privateKeyPtr);
-          if (ret !== 0) {
-            throw new Error('Sign operation failed');
-          }
-
-          const actualSize = loadSize(signatureSizePtr);
-          if (actualSize > signatureSize) {
-            throw new Error(`Actual signature size (${actualSize}) exceeds maximum size (${signatureSize}).`);
-          }
-
-          return loadSlice(signaturePtr, actualSize);
-        });
-      }));
+    return runInWorker({
+      fn: this.#algorithm.functions.signature,
+      inputs: [messageArrayBuffer, messageSize, this.#material],
+      outputs: [{ type: 'ArrayBuffer', byteLength: signatureSize },
+                { type: 'u32', init: signatureSize }]
+    }).then(({ result, outputs }) => {
+      if (result !== 0) {
+        return Promise.reject(new Error('Sign operation failed'));
+      } else {
+        // TODO: avoid copying here by somehow getting the properly sized
+        // ArrayBuffer from the worker directly.
+        const actualSize = outputs[1];
+        if (actualSize > signatureSize) {
+          return Promise.reject(
+              new Error(`Actual signature size (${actualSize}) exceeds maximum size (${signatureSize}).`));
+        }
+        return Promise.resolve(outputs[0].slice(0, actualSize));
+      }
     });
   }
 }
@@ -865,23 +876,23 @@ function generateSignKeyPair(name) {
     throw new Error('No such implementation');
   }
 
-  return fakeAsync(async () => {
-    const { privateKeySize, publicKeySize } = algorithm.properties;
+  const { publicKeySize, privateKeySize } = algorithm.properties;
 
-    return scopedAlloc(privateKeySize + publicKeySize, (ptr) => {
-      const privateKeyPtr = ptr, publicKeyPtr = ptr + privateKeySize;
-      const ret = instance.exports[algorithm.functions.keypair](publicKeyPtr, privateKeyPtr);
-      if (ret !== 0) {
-        throw new Error('Failed to generate keypair');
-      }
-
-      // TODO: avoid all the copying, maybe just maintain a pointer to the
-      // WebAssembly memory.
-      return {
-        publicKey: new PQCleanSignPublicKey(name, loadSlice(publicKeyPtr, publicKeySize)),
-        privateKey: new PQCleanSignPrivateKey(name, loadSlice(privateKeyPtr, privateKeySize))
-      };
-    });
+  return runInWorker({
+    fn: algorithm.functions.keypair,
+    inputs: [],
+    outputs: [{ type: 'ArrayBuffer', byteLength: publicKeySize},
+              { type: 'ArrayBuffer', byteLength: privateKeySize } ]
+  }).then(({ result, outputs }) => {
+    if (result !== 0) {
+      return Promise.reject(new Error('Failed to generate keypair'));
+    } else {
+      // TODO: avoid copying the output ArrayBuffers
+      return Promise.resolve({
+        publicKey: new PQCleanSignPublicKey(name, outputs[0]),
+        privateKey: new PQCleanSignPrivateKey(name, outputs[1])
+      });
+    }
   });
 }
 
