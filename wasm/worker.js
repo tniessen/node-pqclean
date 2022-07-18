@@ -1,11 +1,9 @@
 'use strict';
 
 const { randomFillSync } = require('node:crypto');
-const { readFileSync } = require('node:fs');
-const { parentPort } = require('node:worker_threads');
+const { parentPort, workerData } = require('node:worker_threads');
 
-const wasm = new WebAssembly.Module(readFileSync(`${__dirname}/gen/pqclean.wasm`));
-const instance = new WebAssembly.Instance(wasm, {
+const instance = new WebAssembly.Instance(workerData.wasmModule, {
   env: {
     PQCLEAN_randombytes(ptr, nBytes) {
       randomFillSync(mem(), ptr, nBytes);

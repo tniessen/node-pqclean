@@ -522,7 +522,9 @@ function runInWorker(task) {
       const queueSize = queue.push({ task, resolve, reject });
       if (queueSize > allWorkers.length ** 2 && allWorkers.length < maxWorkers) {
         // There are too many tasks queued, spin up a new worker.
-        const newWorker = new Worker(`${__dirname}/worker.js`);
+        const newWorker = new Worker(`${__dirname}/worker.js`, {
+          workerData: { wasmModule: wasm }
+        });
         // Add the worker to the list of workers to prevent more from being
         // created immediately, but only mark it as idle once it is online.
         allWorkers.push(newWorker);
