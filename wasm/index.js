@@ -535,11 +535,18 @@ function runInWorker(task) {
   });
 }
 
+const internal = Symbol();
+
 class PQCleanKEMPublicKey {
   #algorithm;
   #material;
 
   constructor(name, key) {
+    if (arguments.length === 1 && typeof name === 'object' && internal in name) {
+      [this.#algorithm, this.#material] = name[internal];
+      return;
+    }
+
     if (arguments.length !== 2) {
       throw new TypeError('Wrong number of arguments');
     }
@@ -600,6 +607,11 @@ class PQCleanKEMPrivateKey {
   #material;
 
   constructor(name, key) {
+    if (arguments.length === 1 && typeof name === 'object' && internal in name) {
+      [this.#algorithm, this.#material] = name[internal];
+      return;
+    }
+
     if (arguments.length !== 2) {
       throw new TypeError('Wrong number of arguments');
     }
@@ -693,10 +705,9 @@ function generateKEMKeyPair(name) {
     if (result !== 0) {
       return Promise.reject(new Error('Failed to generate keypair'));
     } else {
-      // TODO: avoid copying the output ArrayBuffers
       return Promise.resolve({
-        publicKey: new PQCleanKEMPublicKey(name, outputs[0]),
-        privateKey: new PQCleanKEMPrivateKey(name, outputs[1])
+        publicKey: new PQCleanKEMPublicKey({ [internal]: [algorithm, outputs[0]] }),
+        privateKey: new PQCleanKEMPrivateKey({ [internal]: [algorithm, outputs[1]] })
       });
     }
   });
@@ -707,6 +718,11 @@ class PQCleanSignPublicKey {
   #material;
 
   constructor(name, key) {
+    if (arguments.length === 1 && typeof name === 'object' && internal in name) {
+      [this.#algorithm, this.#material] = name[internal];
+      return;
+    }
+
     if (arguments.length !== 2) {
       throw new TypeError('Wrong number of arguments');
     }
@@ -791,6 +807,11 @@ class PQCleanSignPrivateKey {
   #material;
 
   constructor(name, key) {
+    if (arguments.length === 1 && typeof name === 'object' && internal in name) {
+      [this.#algorithm, this.#material] = name[internal];
+      return;
+    }
+
     if (arguments.length !== 2) {
       throw new TypeError('Wrong number of arguments');
     }
@@ -890,10 +911,9 @@ function generateSignKeyPair(name) {
     if (result !== 0) {
       return Promise.reject(new Error('Failed to generate keypair'));
     } else {
-      // TODO: avoid copying the output ArrayBuffers
       return Promise.resolve({
-        publicKey: new PQCleanSignPublicKey(name, outputs[0]),
-        privateKey: new PQCleanSignPrivateKey(name, outputs[1])
+        publicKey: new PQCleanSignPublicKey({ [internal]: [algorithm, outputs[0]] }),
+        privateKey: new PQCleanSignPrivateKey({ [internal]: [algorithm, outputs[1]] })
       });
     }
   });
