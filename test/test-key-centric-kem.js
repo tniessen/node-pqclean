@@ -101,6 +101,32 @@ for (const algorithm of kem.supportedAlgorithms) {
          'exported private key should be an ArrayBuffer');
     t.equal(exportedPrivateKey.byteLength, privateKeySize,
             `exportedPrivateKey.byteLength should be ${privateKeySize}`);
+
+    for (const [desc, KeyClass, material] of [
+      ['public key', kem.PublicKey, exportedPublicKey],
+      ['private key', kem.PrivateKey, exportedPrivateKey]
+    ]) {
+      for (const ArrayBufferView of [
+        Uint8Array, Int8Array, Uint16Array, Int16Array, Uint32Array, Int32Array,
+        BigUint64Array, BigInt64Array, Float32Array, Float64Array, DataView
+      ]) {
+        const message = `importing the ${desc} from a(n) ` +
+                        `${ArrayBufferView.name} should work`;
+        const bytesPerElement = ArrayBufferView.BYTES_PER_ELEMENT || 1;
+        if (material.byteLength % bytesPerElement !== 0) {
+          t.skip(message);
+          continue;
+        }
+        const largerArrayBuffer = new ArrayBuffer(material.byteLength + 1000);
+        new Uint8Array(largerArrayBuffer).set(
+            new Uint8Array(material), 19 * bytesPerElement);
+        const view = new ArrayBufferView(
+            largerArrayBuffer, 19 * bytesPerElement,
+            material.byteLength / bytesPerElement);
+        const importedKey = new KeyClass(algorithm.name, view);
+        t.deepEqual(importedKey.export(), material, message);
+      }
+    }
   });
 }
 
