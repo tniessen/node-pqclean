@@ -83,15 +83,17 @@ for (const algorithm of Sign.supportedAlgorithms) {
     t.equal(sign.verify(publicKey, message, signature), true,
             'verify should return true when the signature is valid');
 
-    // Change a single bit in the signature.
     const rand = (max) => Math.floor(max * Math.random());
-    const tamperedSignature = Buffer.from(signature);
-    tamperedSignature[rand(tamperedSignature.length)] ^= 1 << rand(7);
+    const copyArrayBufferToBuffer = (a) => Buffer.from(Buffer.from(a));
+
+    // Change a single bit in the signature.
+    const tamperedSignature = copyArrayBufferToBuffer(signature);
+    tamperedSignature[rand(tamperedSignature.length)] ^= 1 << rand(8);
     t.equal(sign.verify(publicKey, message, tamperedSignature), false,
             'verify should return false when the signature is invalid');
 
-    const tamperedMessage = Buffer.from(message);
-    tamperedMessage[rand(tamperedMessage.length)] ^= 1 << rand(7);
+    const tamperedMessage = copyArrayBufferToBuffer(message);
+    tamperedMessage[rand(tamperedMessage.length)] ^= 1 << rand(8);
     t.equal(sign.verify(publicKey, tamperedMessage, signature), false,
             'verify should return false when the message has been modified');
 
