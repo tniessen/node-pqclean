@@ -67,7 +67,10 @@ namespace.
 ```javascript
 const PQClean = require('pqclean');
 
-const { publicKey, privateKey } = PQClean.sign.generateKeyPair('falcon-1024');
+const {
+  publicKey,
+  privateKey
+} = await PQClean.sign.generateKeyPair('falcon-1024');
 
 const message = Buffer.from('Hello world!');
 const signature = await privateKey.sign(message);
