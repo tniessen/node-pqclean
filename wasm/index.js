@@ -491,7 +491,7 @@ const queue = [];
 function markWorkerIdle(worker) {
   const next = queue.shift();
   if (next) {
-    runInIdleWorker(worker, next.task, next.resolve);
+    runInIdleWorker(worker, next.task, next.resolve, next.reject);
   } else {
     idleWorkers.push(worker);
     worker.unref();
