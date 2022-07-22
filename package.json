@@ -17,7 +17,9 @@
     "prepack": "npm run regenerate-native && npm run build-wasm",
     "regenerate-native": "node scripts/regenerate-native.mjs",
     "build-native": "node-gyp rebuild -j max",
-    "build-wasm": "node scripts/build-wasm.mjs"
+    "build-wasm": "node scripts/build-wasm.mjs",
+    "build-web": "node scripts/build-web.mjs",
+    "test-web": "cd web/test && npm install && npm test"
   },
   "repository": {
     "type": "git",

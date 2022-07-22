@@ -1,12 +1,14 @@
 'use strict';
 
-const { randomFillSync } = require('node:crypto');
-const { parentPort, workerData } = require('node:worker_threads');
+const randomBytes = (typeof crypto === 'object' && crypto.getRandomValues.bind(crypto)) || require('node:crypto').randomFillSync;
 
-const instance = new WebAssembly.Instance(workerData.wasmModule, {
+const isWebWorker = typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope;
+const parentPort = isWebWorker ? self : require('node:worker_threads').parentPort;
+
+const instance = new WebAssembly.Instance(typeof wasmModule === 'object' ? wasmModule : require('node:worker_threads').workerData.wasmModule, {
   env: {
     PQCLEAN_randombytes(ptr, nBytes) {
-      randomFillSync(mem(), ptr, nBytes);
+      randomBytes(new Uint8Array(instance.exports.memory.buffer, ptr, nBytes));
     }
   },
   wasi_snapshot_preview1: {
@@ -16,13 +18,13 @@ const instance = new WebAssembly.Instance(workerData.wasmModule, {
   }
 });
 
-const mem = () => Buffer.from(instance.exports.memory.buffer);
-const store = (ptr, bytes) => mem().set(bytes, ptr);
+const store = (ptr, bytes) => new Uint8Array(instance.exports.memory.buffer).set(bytes, ptr);
 const loadSlice = (ptr, size) => instance.exports.memory.buffer.slice(ptr, ptr + size);
-const storeU32 = (ptr, value) => mem().writeUInt32LE(value, ptr);
-const loadU32 = (ptr) => mem().readUInt32LE(ptr);
+const storeU32 = (ptr, value) => new DataView(instance.exports.memory.buffer).setUint32(ptr, value, true);
+const loadU32 = (ptr) => new DataView(instance.exports.memory.buffer).getUint32(ptr, true);
 
-parentPort.on('message', ({ fn, outputs, inputs }) => {
+parentPort.addEventListener('message', (event) => {
+  const { fn, outputs, inputs } = event.data;
   let alloc = 0;
   for (const o of outputs) {
     if (o.type === 'u32') alloc += 4;

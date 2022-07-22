@@ -82,3 +82,69 @@ jobs:
         run: npm install --pqclean-backend=wasm
       - name: Test
         run: npm test
+  build-web:
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    env:
+      NODE_VERSION: 18.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Set up Node.js ${{env.NODE_VERSION}}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{env.NODE_VERSION}}
+      - name: Download WebAssembly module
+        uses: actions/download-artifact@v3
+        with:
+          name: wasm-gen
+          path: wasm/gen
+      - name: Build web distribution
+        run: npm run build-web
+      - name: Upload build output
+        uses: actions/upload-artifact@v3
+        with:
+          name: web-dist
+          path: |
+            web/dist
+          if-no-files-found: error
+  test-web:
+    needs: build-web
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [deno, chrome]
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+    env:
+      NODE_VERSION: 18.x
+      DENO_VERSION: 1.24.x
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Set up Node.js ${{env.NODE_VERSION}}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{env.NODE_VERSION}}
+      - name: Set up Deno ${{env.DENO_VERSION}}
+        if: matrix.mode == 'deno'
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: ${{env.DENO_VERSION}}
+      - name: Download web distribution
+        uses: actions/download-artifact@v3
+        with:
+          name: web-dist
+          path: web/dist
+      - name: Download WebAssembly module
+        if: matrix.os == 'windows-latest'
+        uses: actions/download-artifact@v3
+        with:
+          name: wasm-gen
+          path: wasm/gen
+      - name: Install
+        run: npm install --pqclean-backend=all-algorithms
+      - name: Test
+        run: npm run test-web ${{matrix.mode}}
