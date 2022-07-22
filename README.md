@@ -1,10 +1,16 @@
-# PQClean bindings for Node.js
+# PQClean for Node.js, Deno, and more
 
 This package provides Node.js bindings for [PQClean][], a collection of
 post-quantum cryptography algorithm implementations, including 46 key
 encapsulation mechanisms and 53 digital signature algorithms.
 
+In addition to the native addon for Node.js, this package also provides an
+implementation for Deno and other JavaScript runtimes, such as browsers, based
+on WebAssembly.
+
 ## Installation
+
+To use this package in Node.js, install it as usual.
 
 ```sh
 npm i pqclean
@@ -37,14 +43,21 @@ config variable `pqclean-backend`.
 You can read more about npm config variables
 [here](https://docs.npmjs.com/cli/v8/using-npm/config).
 
+### Building for the web (Deno, browsers, etc.)
+
+Clone the repository and run `npm run build-wasm && npm run build-web`. This
+will produce the web distribution in `web/dist`.
+
 ## Key-centric API
 
-This is the recommended API.
+This is the recommended API. It is available in Node.js (both through the native
+backend and through the WebAssembly backend) and in the web implementation,
+which can be used in Deno and modern browsers.
 
 ### Example
 
-PQClean provides a consistent API for key encapsulation mechanisms. The Node.js
-bindings expose this through the `kem` namespace.
+PQClean provides a consistent API for key encapsulation mechanisms, which is
+exposed through the `kem` namespace.
 
 ```javascript
 const PQClean = require('pqclean');
@@ -223,6 +236,10 @@ The size of the signature is at most `privateKey.algorithm.signatureSize`.
 
 The classic API is compatible with [node-mceliece-nist][]. It uses Node.js
 `Buffer`s and callback-style functions instead of `Promise`s.
+
+This API is only available in Node.js (both through the native backend and
+through the WebAssembly backend). The web implementation for Deno and other
+JavaScript runtimes only implements the new key-centric API (see above).
 
 ### Example
 
