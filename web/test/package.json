@@ -1,7 +1,7 @@
 {
   "devDependencies": {
     "node-static": "^0.7.11",
-    "puppeteer": "^15.5.0"
+    "puppeteer": "^16.2.0"
   },
   "scripts": {
     "test": "node server.mjs"
