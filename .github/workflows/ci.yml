@@ -44,7 +44,7 @@ jobs:
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Set up Emscripten SDK ${{env.EMSDK_VERSION}}
-        uses: mymindstorm/setup-emsdk@v11
+        uses: mymindstorm/setup-emsdk@v12
         with:
           version: ${{env.EMSDK_VERSION}}
       - name: Install dependencies
