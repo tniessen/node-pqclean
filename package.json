@@ -8,7 +8,7 @@
     "node-addon-api": "^6.0.0"
   },
   "devDependencies": {
-    "mceliece-nist": "^2.0.1",
+    "mceliece-nist": "^4.0.0",
     "tape": "^5.5.3"
   },
   "scripts": {

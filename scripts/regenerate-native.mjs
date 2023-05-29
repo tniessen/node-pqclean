@@ -14,10 +14,6 @@ const signImpls = (await readdir('deps/PQClean/crypto_sign')).sort();
 // disable them on Windows, where the default stack size is only 1 MiB.
 // TODO: undo if https://github.com/nodejs/node/issues/43630 gets fixed.
 const largeStackKemImpls = [
-  'frodokem1344aes',
-  'frodokem1344shake',
-  'frodokem976aes',
-  'frodokem976shake',
   'mceliece348864',
   'mceliece348864f',
   'mceliece460896',
@@ -30,11 +26,6 @@ const largeStackKemImpls = [
   'mceliece8192128f'
 ];
 const largeStackSignImpls = [
-  'rainbowIII-circumzenithal',
-  'rainbowIII-compressed',
-  'rainbowV-circumzenithal',
-  'rainbowV-classic',
-  'rainbowV-compressed'
 ];
 
 const nKemImpls = kemImpls.length;
