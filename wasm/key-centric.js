@@ -3,9 +3,21 @@
 module.exports.init = (algorithms, createWorker) => {
   const byName = (algorithm) => ({ properties: { name } }) => name === algorithm;
 
-  const maxWorkers = (typeof navigator === 'object' && navigator.hardwareConcurrency) ||
-                     (typeof require === 'function' && require('node:os').cpus().length) ||
-                     2;
+  const maxWorkers = (() => {
+    if (typeof navigator === 'object' && navigator.hardwareConcurrency) {
+      return navigator.hardwareConcurrency;
+    } else if (typeof require === 'function') {
+      const os = require('node:os');
+      if (typeof os.availableParallelism === 'function') {
+        return os.availableParallelism();
+      } else {
+        return os.cpus().length;
+      }
+    } else {
+      return 2;
+    }
+  })();
+
   let nWorkers = 0;
   const idleWorkers = [];
   const queue = [];
