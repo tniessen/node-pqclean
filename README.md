@@ -136,7 +136,7 @@ Returns a `Promise` that resolves to an object with properties named `key` and
 key), respectively. Both are returned as `ArrayBuffer` instances.
 
 The size of the returned shared secret `key` is exactly
-`privateKey.algorithm.keySize` bytes.
+`publicKey.algorithm.keySize` bytes.
 
 ### Class `kem.PrivateKey`
 
