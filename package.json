@@ -46,9 +46,9 @@
   "files": [
     "README.md",
     "binding.gyp",
-    "deps/PQClean/common",
-    "deps/PQClean/crypto_kem/*/clean",
-    "deps/PQClean/crypto_sign/*/clean",
+    "deps/PQClean/common/**",
+    "deps/PQClean/crypto_kem/*/clean/**",
+    "deps/PQClean/crypto_sign/*/clean/**",
     "index.js",
     "native/",
     "package.json",
