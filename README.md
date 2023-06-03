@@ -45,6 +45,10 @@ You can read more about npm config variables
 
 ### Building for the web (Deno, browsers, etc.)
 
+[Emscripten](https://emscripten.org/) and a recent version of Node.js are
+required to build the web distribution, which is based on WebAssembly. If you
+encounter any problems despite having installed `emcc`, please open an issue.
+
 Clone the repository and run `npm run build-wasm && npm run build-web`. This
 will produce the web distribution in `web/dist`.
 
