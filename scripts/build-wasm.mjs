@@ -79,6 +79,10 @@ const proc = spawn('emcc', [
   '-s', 'ERROR_ON_UNDEFINED_SYMBOLS=0',
   '-s', `EXPORTED_FUNCTIONS=${wantedExports}`,
   '-s', 'WASM=1',
+  // 5MB was the default STACK_SIZE in emscripten prior to 3.1.27. Ideally, we
+  // should figure out how much memory we actually need instead of restoring
+  // that default here.
+  '-s', 'STACK_SIZE=5MB',
   '-Wl,--no-entry',
   '-flto', '-Os',
   '-Wall', '-Wextra', '-Wno-unused-function',
