@@ -11,7 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
-        node-version: [16.x, 18.x, 19.x, 20.x]
+        node-version: [18.x, 20.x, 21.x]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
   build-wasm:
     runs-on: ubuntu-latest
     env:
-      NODE_VERSION: 18.x
+      NODE_VERSION: 20.x
       EMSDK_VERSION: 3.1.46
     steps:
       - name: Checkout
@@ -61,7 +61,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
-        node-version: [16.x, 18.x, 19.x, 20.x]
+        node-version: [18.x, 20.x, 21.x]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
     needs: build-wasm
     runs-on: ubuntu-latest
     env:
-      NODE_VERSION: 18.x
+      NODE_VERSION: 20.x
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -113,7 +113,7 @@ jobs:
         mode: [deno, chrome]
         os: [ubuntu-latest, macOS-latest, windows-latest]
     env:
-      NODE_VERSION: 18.x
+      NODE_VERSION: 20.x
       DENO_VERSION: 1.37.1
     steps:
       - name: Checkout
