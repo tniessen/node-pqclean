@@ -26,7 +26,7 @@ jobs:
           node-version: ${{matrix.node-version}}
       # npm<10.2.3 ships a version of node-gyp that doesn't support Python>3.11.
       - name: Set up Python ${{env.PYTHON_VERSION}}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{env.PYTHON_VERSION}}
       - name: Build
@@ -48,7 +48,7 @@ jobs:
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Set up Emscripten SDK ${{env.EMSDK_VERSION}}
-        uses: mymindstorm/setup-emsdk@v12
+        uses: mymindstorm/setup-emsdk@v14
         with:
           version: ${{env.EMSDK_VERSION}}
       - name: Install dependencies
@@ -56,7 +56,7 @@ jobs:
       - name: Build WebAssembly module
         run: npm run build-wasm
       - name: Upload build output
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wasm-gen
           path: |
@@ -78,7 +78,7 @@ jobs:
         with:
           node-version: ${{matrix.node-version}}
       - name: Download WebAssembly module
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: wasm-gen
           path: wasm/gen
@@ -99,14 +99,14 @@ jobs:
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Download WebAssembly module
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: wasm-gen
           path: wasm/gen
       - name: Build web distribution
         run: npm run build-web
       - name: Upload build output
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: web-dist
           path: |
@@ -138,19 +138,19 @@ jobs:
         with:
           deno-version: ${{env.DENO_VERSION}}
       - name: Download web distribution
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: web-dist
           path: web/dist
       - name: Download WebAssembly module
         if: matrix.os == 'windows-latest'
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: wasm-gen
           path: wasm/gen
       # npm<10.2.3 ships a version of node-gyp that doesn't support Python>3.11.
       - name: Set up Python ${{env.PYTHON_VERSION}}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{env.PYTHON_VERSION}}
       - name: Install
