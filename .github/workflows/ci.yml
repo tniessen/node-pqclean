@@ -122,7 +122,7 @@ jobs:
         os: [ubuntu-latest, macOS-latest, windows-latest]
     env:
       NODE_VERSION: 20.x
-      DENO_VERSION: 1.40.5
+      DENO_VERSION: 1.41.0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
