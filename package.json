@@ -37,7 +37,7 @@
     "exchange"
   ],
   "author": "Tobias Nießen <tniessen@tnie.de>",
-  "license": "ISC",
+  "license": "MIT",
   "gypfile": true,
   "bugs": {
     "url": "https://github.com/tniessen/node-pqclean/issues"

@@ -398,7 +398,7 @@ PQClean (i.e., this project), please open an issue in this repository.
 
 ## License
 
-This project is distributed under the ISC license. Please check
+This project is distributed under the MIT license. Please check
 [deps/PQClean](deps) for licenses that apply to individual algorithm
 implementations.
 
