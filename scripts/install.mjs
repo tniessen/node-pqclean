@@ -17,9 +17,6 @@ const backends = {
   'native': { wantNative: true, nativeRequired: true },
   // Do not compile the native addon; always use the WebAssembly module.
   'wasm': { wantNative: false },
-  // Prefer the native addon, unless the native addon would not support all
-  // algorithms, in which case the WebAssembly module is used.
-  'all-algorithms': { wantNative: process.platform !== 'win32' }
 };
 
 const backendName = process.env.npm_config_pqclean_backend || 'prefer-native';

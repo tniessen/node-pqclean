@@ -130,12 +130,7 @@ for (const algorithm of kem.supportedAlgorithms) {
   });
 }
 
-test('kem should be compatible with mceliece-nist', {
-  // We currently disable McEliece when using the native addon on Windows
-  // because Windows' default stack size is too small.
-  skip: process.platform === 'win32' &&
-        !kem.supportedAlgorithms.find(({ name }) => name === 'mceliece8192128')
-}, (t) => {
+test('kem should be compatible with mceliece-nist', (t) => {
   const { McEliece } = require('mceliece-nist');
   t.plan(1 + McEliece.supportedAlgorithms.length);
   t.ok(Array.isArray(McEliece.supportedAlgorithms),

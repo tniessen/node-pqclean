@@ -142,18 +142,12 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      - name: Download WebAssembly module
-        if: matrix.os == 'windows-latest'
-        uses: actions/download-artifact@v4
-        with:
-          name: wasm-gen
-          path: wasm/gen
       # npm<10.2.3 ships a version of node-gyp that doesn't support Python>3.11.
       - name: Set up Python ${{env.PYTHON_VERSION}}
         uses: actions/setup-python@v5
         with:
           python-version: ${{env.PYTHON_VERSION}}
       - name: Install
-        run: npm install --pqclean-backend=all-algorithms
+        run: npm install
       - name: Test
         run: npm run test-web ${{matrix.mode}}

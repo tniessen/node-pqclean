@@ -22,10 +22,6 @@ installed or because the operating system is unsupported, the package will
 continue with the installation, but only the WebAssembly backend will be
 available at runtime.
 
-**Because of the limited stack size on Windows (see [nodejs/node#43630][]), some
-algorithms are disabled when using the native addon on Windows.** If access to
-these algorithms is desired, keep reading.
-
 It is possible to customize the installation procedure through the use of an npm
 config variable `pqclean-backend`.
 
@@ -36,9 +32,6 @@ config variable `pqclean-backend`.
 * `pqclean-backend=wasm` does not build the native addon. Only the WebAssembly
   backend will be available at runtime. This option may be useful when loading
   native addons poses a security risk.
-* `pqclean-backend=all-algorithms` behaves like the default (`prefer-native`)
-  on non-Windows systems. On Windows, where the native addon does not support
-  all algorithms, this behaves like `wasm`.
 
 You can read more about npm config variables
 [here](https://docs.npmjs.com/cli/v8/using-npm/config).
