@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NODE_VERSION: 20.x
-      EMSDK_VERSION: 3.1.59
+      EMSDK_VERSION: 3.1.61
     steps:
       - name: Checkout
         uses: actions/checkout@v4
