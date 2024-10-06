@@ -113,7 +113,9 @@ if (process.argv.length > 3) {
   }
 } else if (process.argv[2] === 'chrome') {
   const puppeteer = await import('puppeteer');
-  const browser = await puppeteer.launch();
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  });
   const page = await browser.newPage();
   await page.goto(baseUrl);
   while (challenge?.remaining?.size !== 0) {
