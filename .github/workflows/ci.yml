@@ -122,7 +122,7 @@ jobs:
         os: [ubuntu-latest, macOS-latest, windows-latest]
     env:
       NODE_VERSION: 20.x
-      DENO_VERSION: 1.x
+      DENO_VERSION: 2.0.x
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -134,7 +134,7 @@ jobs:
           node-version: ${{env.NODE_VERSION}}
       - name: Set up Deno ${{env.DENO_VERSION}}
         if: matrix.mode == 'deno'
-        uses: denoland/setup-deno@v1
+        uses: denoland/setup-deno@v2
         with:
           deno-version: ${{env.DENO_VERSION}}
       - name: Download web distribution
