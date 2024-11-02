@@ -71,7 +71,34 @@ const commonSourceFiles = await sources('common', (name) => name !== 'randombyte
 const kemSourceFiles = (await Promise.all(kemNames.map((kem) => sources(`crypto_kem/${kem}/clean`)))).flat();
 const signSourceFiles = (await Promise.all(signNames.map((sign) => sources(`crypto_sign/${sign}/clean`)))).flat();
 
-console.log(`Compiling ${commonSourceFiles.length} common source files, ${kemSourceFiles.length} KEM source files, ${signSourceFiles.length} sign source files`);
+const wrapperCode = `// Some implementations do not provide certain functions as symbols but only as
+// macros with parameters, which we cannot export. Implement symbols here.
+
+${signNames.map((sign) => `#include "../../${depDir}/crypto_sign/${sign}/clean/api.h"`).join('\n')}
+
+${functions(signNames, 'sign', 'signature').map((fn) => `#ifdef ${fn}
+static inline int _fn_symbol_${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uint8_t *sk) {
+  return ${fn}(sig, siglen, m, mlen, sk);
+}
+#undef ${fn}
+int ${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uint8_t *sk) {
+  return _fn_symbol_${fn}(sig, siglen, m, mlen, sk);
+}
+#endif`).join('\n')}
+${functions(signNames, 'sign', 'verify').map((fn) => `#ifdef ${fn}
+static inline int _fn_symbol_${fn}(const uint8_t *sig, size_t siglen, const uint8_t *m, size_t mlen, const uint8_t *pk) {
+  return ${fn}(sig, siglen, m, mlen, pk);
+}
+#undef ${fn}
+int ${fn}(const uint8_t *sig, size_t siglen, const uint8_t *m, size_t mlen, const uint8_t *pk) {
+  return _fn_symbol_${fn}(sig, siglen, m, mlen, pk);
+}
+#endif`).join('\n')}
+`;
+
+await writeFile(`${buildDir}/missing-symbols.c`, wrapperCode);
+
+console.log(`Compiling ${commonSourceFiles.length} common source files, ${kemSourceFiles.length} KEM source files, ${signSourceFiles.length} sign source files, and missing symbols`);
 
 const proc = spawn('emcc', [
   '-std=c11',
@@ -91,6 +118,7 @@ const proc = spawn('emcc', [
   ...commonSourceFiles,
   ...kemSourceFiles,
   ...signSourceFiles,
+  `${buildDir}/missing-symbols.c`,
 ], {
   stdio: 'inherit'
 });
