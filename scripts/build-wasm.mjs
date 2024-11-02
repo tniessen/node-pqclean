@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import * as events from 'node:events';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 
 const buildDir = 'wasm/gen';
 const depDir = 'deps/PQClean';
@@ -126,6 +126,8 @@ const [code, signal] = await events.once(proc, 'close');
 if (code !== 0) {
   throw new Error(`emcc exited with ${code !== null ? `code ${code}` : `signal ${signal}`}`);
 }
+
+await unlink(`${buildDir}/missing-symbols.c`);
 
 const { size } = await stat(`${buildDir}/pqclean.wasm`);
 console.log(`WebAssembly module size is ${(size / 1024).toFixed(1)} KiB`);
