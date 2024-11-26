@@ -1,8 +1,8 @@
 # PQClean for Node.js, Deno, and more
 
 This package provides Node.js bindings for [PQClean][], a collection of
-post-quantum cryptography algorithm implementations, including 16 key
-encapsulation mechanisms and 19 digital signature algorithms.
+[post-quantum cryptography][] algorithm implementations, including 16
+[key encapsulation mechanisms][] and 19 [digital signature algorithms][].
 
 In addition to the native addon for Node.js, this package also provides an
 implementation for Deno and other JavaScript runtimes, such as browsers, based
@@ -60,4 +60,7 @@ This project is distributed under the MIT license. Please check
 implementations.
 
 [PQClean]: https://github.com/PQClean/PQClean
+[digital signature algorithms]: https://en.wikipedia.org/wiki/Digital_signature
+[key encapsulation mechanisms]: https://en.wikipedia.org/wiki/Key_encapsulation_mechanism
+[post-quantum cryptography]: https://en.wikipedia.org/wiki/Post-quantum_cryptography
 [nodejs/node#43630]: https://github.com/nodejs/node/issues/43630
