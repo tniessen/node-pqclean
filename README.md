@@ -381,13 +381,7 @@ calls `callback(err, result)` when the verification result is available.
 
 ## Security
 
-The security guarantees of the algorithm implementations provided by this
-library do not exceed the security guarantees made by the PQClean project as
-defined in [PQClean/SECURITY.md][]. To report a potential vulnerability in such
-an implementation, please report it to the [PQClean][] project.
-
-To report security issues that are specific to the Node.js or web ports of
-PQClean (i.e., this project), please open an issue in this repository.
+See [SECURITY.md](SECURITY.md).
 
 ## License
 
@@ -396,6 +390,5 @@ This project is distributed under the MIT license. Please check
 implementations.
 
 [PQClean]: https://github.com/PQClean/PQClean
-[PQClean/SECURITY.md]: https://github.com/PQClean/PQClean/blob/HEAD/SECURITY.md
 [nodejs/node#43630]: https://github.com/nodejs/node/issues/43630
 [node-mceliece-nist]: https://github.com/tniessen/node-mceliece-nist
