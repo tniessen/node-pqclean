@@ -59,7 +59,7 @@ for (const algorithm of KEM.supportedAlgorithms) {
 
     st.ok(isUint32(kem.privateKeySize),
           'privateKeySize should be an unsigned integer');
-    st.throws(() => kem.publicKeySize = kem.publicKeySize,
+    st.throws(() => kem.privateKeySize = kem.privateKeySize,
               'privateKeySize should not be writable');
   });
 
