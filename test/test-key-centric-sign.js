@@ -105,6 +105,33 @@ for (const algorithm of sign.supportedAlgorithms) {
               'verify should return false when the public key is incorrect');
     }
 
+    for (const messageSize of [0, Math.ceil(Math.random() * 100000)]) {
+      const message = randomBytes(messageSize);
+
+      const signedMessage = await privateKey.signEmbed(message);
+      t.pass(`signing a ${messageSize} byte message should succeed (embedded signature)`);
+
+      t.ok(signedMessage instanceof ArrayBuffer, 'signedMessage should be an ArrayBuffer');
+      t.ok(signedMessage.byteLength <= messageSize + signatureSize,
+          `signedMessage.byteLength should be less than or equal to ${messageSize + signatureSize}`);
+
+      t.deepEqual(await publicKey.open(signedMessage), new Uint8Array(message).buffer,
+                  'open should return the embedded message when the signature is valid');
+
+      const rand = (max) => Math.floor(max * Math.random());
+      const copyArrayBufferToBuffer = (a) => Buffer.from(Buffer.from(a));
+
+      // Change a single bit in the signed message.
+      const tamperedSignedMessage = copyArrayBufferToBuffer(signedMessage);
+      tamperedSignedMessage[rand(tamperedSignedMessage.length)] ^= 1 << rand(8);
+      t.ok(await publicKey.open(tamperedSignedMessage).then(() => false, () => true),
+           'open should reject when the signedMessage has been modified');
+
+      // Use a different key pair.
+      t.ok(await otherPublicKey.open(signedMessage).then(() => false, () => true),
+           'open should reject when the public key is incorrect');
+    }
+
     const exportedPublicKey = publicKey.export();
     t.ok(exportedPublicKey instanceof ArrayBuffer,
          'exported public key should be an ArrayBuffer');

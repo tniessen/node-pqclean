@@ -1358,6 +1358,68 @@ class SignatureWorker : public Napi::AsyncWorker {
   size_t signatureSize;
 };
 
+class EmbeddedSignatureWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& privateKey,
+                       std::unique_ptr<unsigned char[]>&& message, size_t messageSize) {
+    EmbeddedSignatureWorker* worker = new EmbeddedSignatureWorker(env, privateKey, std::move(message), messageSize);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    auto impl = privateKey->algorithm();
+
+    const size_t maxSignedMessageSize = messageSize + impl->signatureSize;
+    signedMessageSize = maxSignedMessageSize;
+    int r = impl->sign(&signedMessage[0], &signedMessageSize, &message[0], messageSize, privateKey->material().data());
+    if (r != 0) {
+      return SetError("signEmbed operation failed");
+    }
+
+    NAPI_CHECK(signedMessageSize <= maxSignedMessageSize, "PQClean:EmbeddedSignatureWorker",
+               "Actual signature size must not exceed maximum signature size.");
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+
+    // TODO: avoid new allocation / copying
+    auto result = Napi::ArrayBuffer::New(env, signedMessageSize);
+    std::copy(&this->signedMessage[0],
+              &this->signedMessage[0] + signedMessageSize,
+              reinterpret_cast<unsigned char*>(result.Data()));
+
+    deferred.Resolve(result);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  EmbeddedSignatureWorker(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& privateKey,
+                          std::unique_ptr<unsigned char[]>&& message, size_t messageSize)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        privateKey(privateKey),
+        message(std::move(message)),
+        messageSize(messageSize),
+        signedMessage(new unsigned char[messageSize + privateKey->algorithm()->signatureSize]) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Inputs:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr privateKey;
+  std::unique_ptr<unsigned char[]> message;
+  size_t messageSize;
+
+  // Output:
+  std::unique_ptr<unsigned char[]> signedMessage;
+  size_t signedMessageSize;
+};
+
 class VerificationWorker : public Napi::AsyncWorker {
  public:
   static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& publicKey,
@@ -1405,6 +1467,70 @@ class VerificationWorker : public Napi::AsyncWorker {
 
   // Outputs:
   bool ok;
+};
+
+class OpenWorker : public Napi::AsyncWorker {
+ public:
+  static Napi::Value Q(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& publicKey,
+                       std::unique_ptr<unsigned char[]>&& signedMessage, size_t signedMessageSize) {
+    OpenWorker* worker = new OpenWorker(env, publicKey, std::move(signedMessage), signedMessageSize);
+    worker->Queue();
+    return worker->deferred.Promise();
+  }
+
+ protected:
+  void Execute() override {
+    auto impl = publicKey->algorithm();
+
+    messageSize = signedMessageSize;
+
+    // TODO: can we distinguish verification errors from other internal errors?
+    bool ok = 0 == impl->open(&message[0], &messageSize,
+                              &signedMessage[0], signedMessageSize,
+                              publicKey->material().data());
+    if (!ok) {
+      return SetError("signature verification failed");
+    }
+
+    NAPI_CHECK(messageSize < signedMessageSize, "PQClean:OpenWorker",
+               "Embedded message size must be less than signed message size.");
+  }
+
+  virtual void OnOK() override {
+    Napi::Env env = Env();
+
+    // TODO: avoid new allocation / copying
+    auto result = Napi::ArrayBuffer::New(env, messageSize);
+    std::copy(&this->message[0], &this->message[0] + messageSize,
+              reinterpret_cast<unsigned char*>(result.Data()));
+
+    deferred.Resolve(result);
+  }
+
+  virtual void OnError(const Napi::Error& e) override {
+    deferred.Reject(e.Value());
+  }
+
+ private:
+  OpenWorker(Napi::Env env, const AsymmetricKey<pqclean::sign::Algorithm>::Ptr& publicKey,
+             std::unique_ptr<unsigned char[]>&& signedMessage, size_t signedMessageSize)
+      : Napi::AsyncWorker(env),
+        deferred(Napi::Promise::Deferred::New(env)),
+        publicKey(publicKey),
+        signedMessage(std::move(signedMessage)),
+        signedMessageSize(signedMessageSize),
+        message(new unsigned char[signedMessageSize]) {}
+
+  Napi::Promise::Deferred deferred;
+
+  // Inputs:
+  AsymmetricKey<pqclean::sign::Algorithm>::Ptr publicKey;
+  std::unique_ptr<unsigned char[]> signedMessage;
+  size_t signedMessageSize;
+
+  // Outputs:
+  std::unique_ptr<unsigned char[]> message;
+  size_t messageSize;
 };
 
 class SignPublicKey : public Napi::ObjectWrap<SignPublicKey> {
@@ -1498,6 +1624,28 @@ class SignPublicKey : public Napi::ObjectWrap<SignPublicKey> {
     std::copy(signature.data, signature.data + signature.byteLength, &signatureCopy[0]);
 
     return VerificationWorker::Q(env, key, std::move(messageCopy), message.byteLength, std::move(signatureCopy), signature.byteLength);
+  }
+
+  Napi::Value Open(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 1) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    ArrayBufferSlice signedMessage;
+    if (!GetBufferSourceAsSlice(info[0], &signedMessage)) {
+      Napi::TypeError::New(env, "First argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    std::unique_ptr<unsigned char[]> signedMessageCopy = std::make_unique<unsigned char[]>(signedMessage.byteLength);
+    std::copy(signedMessage.data, signedMessage.data + signedMessage.byteLength, &signedMessageCopy[0]);
+
+    return OpenWorker::Q(env, key, std::move(signedMessageCopy), signedMessage.byteLength);
   }
 
   Napi::Value Export(const Napi::CallbackInfo& info) {
@@ -1600,6 +1748,28 @@ class SignPrivateKey : public Napi::ObjectWrap<SignPrivateKey> {
     return SignatureWorker::Q(env, key, std::move(messageCopy), message.byteLength);
   }
 
+  Napi::Value SignEmbed(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() != 1) {
+      Napi::TypeError::New(env, "Wrong number of arguments")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    ArrayBufferSlice message;
+    if (!GetBufferSourceAsSlice(info[0], &message)) {
+      Napi::TypeError::New(env, "First argument must be a BufferSource")
+          .ThrowAsJavaScriptException();
+      return env.Undefined();
+    }
+
+    std::unique_ptr<unsigned char[]> messageCopy = std::make_unique<unsigned char[]>(message.byteLength);
+    std::copy(message.data, message.data + message.byteLength, &messageCopy[0]);
+
+    return EmbeddedSignatureWorker::Q(env, key, std::move(messageCopy), message.byteLength);
+  }
+
   Napi::Value Export(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
@@ -1656,6 +1826,7 @@ Napi::Object InitKeyCentricSign(Napi::Env env, AddonData* addonData) {
   auto publicKeyClass = SignPublicKey::DefineClass(env, "PQCleanSignPublicKey", {
     Napi::ObjectWrap<SignPublicKey>::InstanceAccessor("algorithm", &SignPublicKey::GetAlgorithm, nullptr, napi_enumerable),
     Napi::ObjectWrap<SignPublicKey>::InstanceMethod("verify", &SignPublicKey::Verify),
+    Napi::ObjectWrap<SignPublicKey>::InstanceMethod("open", &SignPublicKey::Open),
     Napi::ObjectWrap<SignPublicKey>::InstanceMethod("export", &SignPublicKey::Export)
   });
   obj.DefineProperty(Napi::PropertyDescriptor::Value("PublicKey", publicKeyClass, napi_enumerable));
@@ -1666,6 +1837,7 @@ Napi::Object InitKeyCentricSign(Napi::Env env, AddonData* addonData) {
   auto privateKeyClass = SignPrivateKey::DefineClass(env, "PQCleanSignPrivateKey", {
     Napi::ObjectWrap<SignPrivateKey>::InstanceAccessor("algorithm", &SignPrivateKey::GetAlgorithm, nullptr, napi_enumerable),
     Napi::ObjectWrap<SignPrivateKey>::InstanceMethod("sign", &SignPrivateKey::Sign),
+    Napi::ObjectWrap<SignPrivateKey>::InstanceMethod("signEmbed", &SignPrivateKey::SignEmbed),
     Napi::ObjectWrap<SignPrivateKey>::InstanceMethod("export", &SignPrivateKey::Export)
   });
   obj.DefineProperty(Napi::PropertyDescriptor::Value("PrivateKey", privateKeyClass, napi_enumerable));

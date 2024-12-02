@@ -24,6 +24,11 @@ async function readApi(name, type) {
           .map(([key, value]) => [key.substring(prefix.length), value]));
 }
 
+function functionName(name, type, fn) {
+  if (type === 'sign' && fn === 'sign') return `${ns(name)}crypto_${type}`;
+  return `${ns(name)}crypto_${type}_${fn}`;
+}
+
 async function readAlgorithms(names, type, props, functions) {
   return Promise.all(names.map(async (name) => {
     const api = await readApi(name, type);
@@ -35,7 +40,7 @@ async function readAlgorithms(names, type, props, functions) {
         privateKeySize: api.SECRETKEYBYTES,
         ...props(api)
       },
-      functions: Object.fromEntries(functions.map((fn) => [fn, `${ns(name)}crypto_${type}_${fn}`]))
+      functions: Object.fromEntries(functions.map((fn) => [fn, functionName(name, type, fn)]))
     };
   }));
 }
@@ -47,20 +52,20 @@ const kemAlgorithms = await readAlgorithms(kemNames, 'kem', (api) => ({
 
 const signAlgorithms = await readAlgorithms(signNames, 'sign', (api) => ({
   signatureSize: api.BYTES
-}), ['keypair', 'signature', 'verify']);
+}), ['keypair', 'signature', 'sign', 'verify', 'open']);
 
 await writeFile(`${buildDir}/algorithms.json`, JSON.stringify({
   kem: kemAlgorithms,
   sign: signAlgorithms
 }, null, 2));
 
-const functions = (names, type, ...fns) => names.map((name) => fns.map((fn) => `${ns(name)}crypto_${type}_${fn}`))
+const functions = (names, type, ...fns) => names.map((name) => fns.map((fn) => functionName(name, type, fn)))
                                                 .flat();
 
 const wantedExports = JSON.stringify([
   'malloc', 'free',
   ...functions(kemNames, 'kem', 'keypair', 'enc', 'dec'),
-  ...functions(signNames, 'sign', 'keypair', 'signature', 'verify')
+  ...functions(signNames, 'sign', 'keypair', 'signature', 'sign', 'verify', 'open')
 ].map((e) => `_${e}`));
 
 const sources = async (dir, filter) => (await readdir(`${depDir}/${dir}`))
@@ -85,6 +90,15 @@ int ${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uin
   return _fn_symbol_${fn}(sig, siglen, m, mlen, sk);
 }
 #endif`).join('\n')}
+${functions(signNames, 'sign', 'sign').map((fn) => `#ifdef ${fn}
+static inline int _fn_symbol_${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uint8_t *sk) {
+  return ${fn}(sig, siglen, m, mlen, sk);
+}
+#undef ${fn}
+int ${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uint8_t *sk) {
+  return _fn_symbol_${fn}(sig, siglen, m, mlen, sk);
+}
+#endif`).join('\n')}
 ${functions(signNames, 'sign', 'verify').map((fn) => `#ifdef ${fn}
 static inline int _fn_symbol_${fn}(const uint8_t *sig, size_t siglen, const uint8_t *m, size_t mlen, const uint8_t *pk) {
   return ${fn}(sig, siglen, m, mlen, pk);
@@ -92,6 +106,16 @@ static inline int _fn_symbol_${fn}(const uint8_t *sig, size_t siglen, const uint
 #undef ${fn}
 int ${fn}(const uint8_t *sig, size_t siglen, const uint8_t *m, size_t mlen, const uint8_t *pk) {
   return _fn_symbol_${fn}(sig, siglen, m, mlen, pk);
+}
+#endif
+`).join('\n')}
+${functions(signNames, 'sign', 'open').map((fn) => `#ifdef ${fn}
+static inline int _fn_symbol_${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uint8_t *sk) {
+  return ${fn}(sig, siglen, m, mlen, sk);
+}
+#undef ${fn}
+int ${fn}(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t mlen, const uint8_t *sk) {
+  return _fn_symbol_${fn}(sig, siglen, m, mlen, sk);
 }
 #endif`).join('\n')}
 `;

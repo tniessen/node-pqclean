@@ -357,6 +357,41 @@ module.exports.init = (algorithms, createWorker) => {
         return Promise.resolve(result === 0);
       })
     }
+
+    open(signedMessage) {
+      if (arguments.length !== 1) {
+        throw new TypeError('Wrong number of arguments');
+      }
+
+      let signedMessageArrayBuffer;
+      if (signedMessage instanceof ArrayBuffer) {
+        signedMessageArrayBuffer = signedMessage.slice();
+      } else if (ArrayBuffer.isView(signedMessage)) {
+        signedMessageArrayBuffer = signedMessage.buffer.slice(
+            signedMessage.byteOffset,
+            signedMessage.byteOffset + signedMessage.byteLength);
+      } else {
+        throw new TypeError('First argument must be a BufferSource');
+      }
+
+      const messageSize = signedMessageArrayBuffer.byteLength;
+
+      return runInWorker({
+        fn: this.#algorithm.functions.open,
+        inputs: [signedMessageArrayBuffer, messageSize, this.#material],
+        outputs: [{ type: 'ArrayBuffer', byteLength: messageSize },
+                  { type: 'u32', init: messageSize }]
+      }).then(({ result, outputs }) => {
+        if (result !== 0) {
+          return Promise.reject(new Error('Open operation failed'));
+        } else {
+          // TODO: avoid copying here by somehow getting the properly sized
+          // ArrayBuffer from the worker directly.
+          const actualSize = outputs[1];
+          return Promise.resolve(outputs[0].slice(0, actualSize));
+        }
+      });
+    }
   }
 
   class PQCleanSignPrivateKey {
@@ -437,6 +472,42 @@ module.exports.init = (algorithms, createWorker) => {
             return Promise.reject(
                 new Error(`Actual signature size (${actualSize}) exceeds maximum size (${signatureSize}).`));
           }
+          return Promise.resolve(outputs[0].slice(0, actualSize));
+        }
+      });
+    }
+
+    signEmbed(message) {
+      if (arguments.length !== 1) {
+        throw new TypeError('Wrong number of arguments');
+      }
+
+      let messageArrayBuffer;
+      if (message instanceof ArrayBuffer) {
+        messageArrayBuffer = message.slice();
+      } else if (ArrayBuffer.isView(message)) {
+        messageArrayBuffer = message.buffer.slice(
+            message.byteOffset, message.byteOffset + message.byteLength);
+      } else {
+        throw new TypeError('First argument must be a BufferSource');
+      }
+
+      const { signatureSize } = this.#algorithm.properties;
+      const messageSize = messageArrayBuffer.byteLength;
+      const signedMessageSize = messageSize + signatureSize;
+
+      return runInWorker({
+        fn: this.#algorithm.functions.sign,
+        inputs: [messageArrayBuffer, messageSize, this.#material],
+        outputs: [{ type: 'ArrayBuffer', byteLength: signedMessageSize },
+                  { type: 'u32', init: signedMessageSize }]
+      }).then(({ result, outputs }) => {
+        if (result !== 0) {
+          return Promise.reject(new Error('Sign operation failed'));
+        } else {
+          // TODO: avoid copying here by somehow getting the properly sized
+          // ArrayBuffer from the worker directly.
+          const actualSize = outputs[1];
           return Promise.resolve(outputs[0].slice(0, actualSize));
         }
       });

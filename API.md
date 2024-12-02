@@ -155,6 +155,13 @@ above).
 Returns an `ArrayBuffer` containing the key material. The key can later be
 imported using `new sign.PublicKey(name, bytes)`.
 
+#### `publicKey.open(signedMessage)`
+
+Verifies that the signature embedded in the `signedMessage` is correct using
+this public key. The `signedMessage` must be a `BufferSource`. Returns a
+`Promise` that resolves to the message if the signature is valid and that is
+rejected otherwise.
+
 #### `publicKey.verify(message, signature)`
 
 Verifies that the given `signature` is correct for the given `message` using
@@ -181,11 +188,20 @@ imported using `new sign.PrivateKey(name, bytes)`.
 
 #### `privateKey.sign(message)`
 
-Computes a signature for the given `message` using this private key. The
-`message` must be a `BufferSource`. Returns a `Promise` that resolves to an
+Computes a detached signature for the given `message` using this private key.
+The `message` must be a `BufferSource`. Returns a `Promise` that resolves to an
 `ArrayBuffer`, which is the signature.
 
 The size of the signature is at most `privateKey.algorithm.signatureSize`.
+
+#### `privateKey.signEmbed(message)`
+
+Signs the given `message` using this private key and embeds both into a single
+signed message. The `message` must be a `BufferSource`. Returns a `Promise` that
+resolves to an `ArrayBuffer`, which is the signed message.
+
+The size of the signed message is at most the byte length of the `message` plus
+`privateKey.algorithm.signatureSize`.
 
 ## Classic API
 

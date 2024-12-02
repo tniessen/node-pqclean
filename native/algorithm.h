@@ -36,9 +36,17 @@ typedef int (*signature_fn)(uint8_t* sig, size_t* siglen,
                             const uint8_t* m, size_t mlen,
                             const uint8_t* sk);
 
+typedef int (*sign_fn)(uint8_t* sm, size_t* smlen,
+                       const uint8_t* m, size_t mlen,
+                       const uint8_t* sk);
+
 typedef int (*verify_fn)(const uint8_t* sig, size_t siglen,
                          const uint8_t* m, size_t mlen,
                          const uint8_t* pk);
+
+typedef int (*open_fn)(uint8_t* m, size_t* mlen,
+                       const uint8_t* sm, size_t smlen,
+                       const uint8_t* pk);
 
 struct Algorithm {
   std::string id;
@@ -49,7 +57,9 @@ struct Algorithm {
   size_t seedSize;
   keypair_fn keypair;
   signature_fn signature;
+  sign_fn sign;
   verify_fn verify;
+  open_fn open;
 };
 
 }  // namespace sign

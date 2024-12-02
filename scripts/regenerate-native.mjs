@@ -122,9 +122,19 @@ inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature(uint8_t* s
   return PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature(sig, siglen, m, mlen, sk);
 }
 #endif
+#ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign
+inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign(uint8_t* sm, size_t* smlen, const uint8_t* m, size_t mlen, const uint8_t* sk) {
+  return PQCLEAN_${id(impl)}_CLEAN_crypto_sign(sm, smlen, m, mlen, sk);
+}
+#endif
 #ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
 inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify(const uint8_t* sig, size_t siglen, const uint8_t* m, size_t mlen, const uint8_t* pk) {
   return PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify(sig, siglen, m, mlen, pk);
+}
+#endif
+#ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
+inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open(uint8_t* m, size_t* mlen, const uint8_t* sm, size_t smlen, const uint8_t* pk) {
+  return PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open(m, mlen, sm, smlen, pk);
 }
 #endif`).join('\n')}
 }
@@ -148,10 +158,20 @@ ${signImpls.map((impl) => `    {
 #else
       _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature,
 #endif
-#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
-      PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
+#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign
+      PQCLEAN_${id(impl)}_CLEAN_crypto_sign,
 #else
-      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
+      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign,
+#endif
+#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
+      PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify,
+#else
+      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify,
+#endif
+#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
+      PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
+#else
+      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
 #endif
     },`).join('\n')}
   }};
