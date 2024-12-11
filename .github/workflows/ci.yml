@@ -4,9 +4,6 @@ on:
   push:
   pull_request:
 
-env:
-  PYTHON_VERSION: '3.11'
-
 jobs:
   test-native:
     runs-on: ${{matrix.os}}
@@ -24,11 +21,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{matrix.node-version}}
-      # npm<10.2.3 ships a version of node-gyp that doesn't support Python>3.11.
-      - name: Set up Python ${{env.PYTHON_VERSION}}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{env.PYTHON_VERSION}}
       - name: Build
         run: npm install --pqclean-backend=native
       - name: Test
@@ -142,11 +134,6 @@ jobs:
         with:
           name: web-dist
           path: web/dist
-      # npm<10.2.3 ships a version of node-gyp that doesn't support Python>3.11.
-      - name: Set up Python ${{env.PYTHON_VERSION}}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{env.PYTHON_VERSION}}
       - name: Install
         run: npm install
       - name: Test
