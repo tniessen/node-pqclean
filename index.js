@@ -1,14 +1,25 @@
 'use strict';
 
-let kem, sign, KEM, Sign;
-try {
-  // Try to load native bindings first.
-  ({ kem, sign, KEM, Sign } = require('bindings')('node_pqclean'));
-} catch (err) {
-  // If native bindings are not available, use WebAssembly instead.
-  ({ kem, sign, KEM, Sign } = require('./wasm/'));
-  process.emitWarning(`Using WebAssembly backend: ${err.message}`);
-}
+const installConfig = require('./install-config.gen.js');
+
+const { kem, sign, KEM, Sign } = (function loadBackend(backend) {
+  switch (backend) {
+    case 'prefer-native':
+      try {
+        return loadBackend('native');
+      } catch (err) {
+        // Use WebAssembly backend only if native bindings are not available.
+        process.emitWarning(`Using WebAssembly backend: ${err.message}`);
+        return loadBackend('wasm');
+      }
+    case 'native':
+      return require('bindings')('node_pqclean');
+    case 'wasm':
+      return require('./wasm/');
+    default:
+      throw new Error(`Unsupported backend: ${backend}`);
+  }
+})(installConfig.backend);
 
 // TODO: should we deep-freeze these?
 Object.freeze(kem.supportedAlgorithms);

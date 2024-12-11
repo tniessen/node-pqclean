@@ -1,4 +1,5 @@
 build/
+install-config.gen.js
 native/gen/
 node_modules/
 package-lock.json

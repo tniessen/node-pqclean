@@ -2,7 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import * as events from 'node:events';
-import { access, rm } from 'node:fs/promises';
+import { access, rm, writeFile } from 'node:fs/promises';
 
 if (process.env.npm_lifecycle_event !== 'install') {
   console.error('Please use "npm install".');
@@ -87,3 +87,5 @@ if (wasmRequired) {
     }
   }
 }
+
+await writeFile('install-config.gen.js', `module.exports.backend = '${backendName}';\n`);
