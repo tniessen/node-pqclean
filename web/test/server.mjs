@@ -34,7 +34,7 @@ const server = createServer((req, res) => {
         throw new Error('Not all algorithm names are unique');
       }
 
-      const nonce = randomBytes(Math.max(...PQClean.kem.supportedAlgorithms.map((algorithm) => algorithm.keySize)))
+      const nonce = randomBytes(Math.max(...PQClean.kem.supportedAlgorithms.map((algorithm) => algorithm.keySize)));
       challenge = { algorithmNames, remaining, nonce };
       console.log(`ok client requested challenge for ${algorithmNames.length} algorithms`);
       res.end(challenge.nonce);
