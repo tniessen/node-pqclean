@@ -7,6 +7,20 @@ async function requireOK(response) {
   return response;
 }
 
+function hex(binary) {
+  if (binary instanceof ArrayBuffer) {
+    binary = new Uint8Array(binary);
+  }
+  if (!(binary instanceof Uint8Array)) {
+    throw new TypeError('Expected ArrayBuffer or Uint8Array');
+  }
+  let ret = '';
+  for (let i = 0; i < binary.length; i++) {
+    ret += binary[i].toString(16).padStart(2, '0');
+  }
+  return ret;
+}
+
 const algorithmNames = [
   ...PQClean.kem.supportedAlgorithms.map(({ name }) => name),
   ...PQClean.sign.supportedAlgorithms.map(({ name }) => name)
@@ -35,15 +49,15 @@ async function testKEM(algorithm) {
 
   typeof onTestProgress === 'function' && onTestProgress(algorithm.name, 'export');
   const exportedPrivateKey = privateKey.export();
-  const result = new Uint8Array(exportedPrivateKey.byteLength + encryptedKey.byteLength + oneTimePaddedChallenge.byteLength);
-  result.set(new Uint8Array(exportedPrivateKey));
-  result.set(new Uint8Array(encryptedKey), exportedPrivateKey.byteLength);
-  result.set(new Uint8Array(oneTimePaddedChallenge), exportedPrivateKey.byteLength + encryptedKey.byteLength);
 
   typeof onTestProgress === 'function' && onTestProgress(algorithm.name, 'submit result');
   await fetch(new URL(`submit/${algorithm.name}`, import.meta.url), {
     method: 'POST',
-    body: result
+    body: JSON.stringify({
+      privateKey: hex(exportedPrivateKey),
+      encryptedKey: hex(encryptedKey),
+      ciphertext: hex(oneTimePaddedChallenge),
+    }),
   }).then(requireOK);
 
   typeof onTestDone === 'function' && onTestDone(algorithm.name);
@@ -60,17 +74,19 @@ async function testSign(algorithm) {
 
   typeof onTestProgress === 'function' && onTestProgress(algorithm.name, 'sign');
   const signature = await privateKey.sign(challenge);
+  const signedMessage = await privateKey.signEmbed(challenge);
 
   typeof onTestProgress === 'function' && onTestProgress(algorithm.name, 'export');
   const exportedPublicKey = publicKey.export();
-  const result = new Uint8Array(exportedPublicKey.byteLength + signature.byteLength);
-  result.set(new Uint8Array(exportedPublicKey));
-  result.set(new Uint8Array(signature), exportedPublicKey.byteLength);
 
   typeof onTestProgress === 'function' && onTestProgress(algorithm.name, 'submit result');
   await fetch(new URL(`submit/${algorithm.name}`, import.meta.url), {
     method: 'POST',
-    body: result
+    body: JSON.stringify({
+      publicKey: hex(exportedPublicKey),
+      signature: hex(signature),
+      signedMessage: hex(signedMessage),
+    }),
   }).then(requireOK);
   typeof onTestDone === 'function' && onTestDone(algorithm.name);
 }

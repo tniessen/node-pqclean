@@ -52,24 +52,33 @@ const server = createServer((req, res) => {
         body = Buffer.concat([body, chunk]);
       }
 
+      const submittedFields = JSON.parse(body.toString('utf8'));
+
       const kemAlgorithm = PQClean.kem.supportedAlgorithms.find((a) => a.name === name);
       const signatureAlgorithm = PQClean.sign.supportedAlgorithms.find((a) => a.name === name);
       if (kemAlgorithm) {
-        let offset;
-        const privateKeyBytes = body.subarray(offset = 0, offset += kemAlgorithm.privateKeySize);
-        const encryptedKey = body.subarray(offset, offset += kemAlgorithm.encryptedKeySize);
-        const oneTimePaddedChallenge = body.subarray(offset);
+        const privateKeyBytes = Buffer.from(submittedFields.privateKey, 'hex');
+        const encryptedKey = Buffer.from(submittedFields.encryptedKey, 'hex');
+        const oneTimePaddedChallenge = Buffer.from(submittedFields.ciphertext, 'hex');
         const privateKey = new PQClean.kem.PrivateKey(name, privateKeyBytes);
         const key = await privateKey.decryptKey(encryptedKey);
         if (!new Uint8Array(key).every((v, i) => v ^ oneTimePaddedChallenge[i] === challenge.nonce[i])) {
           throw new Error('Invalid one-time padded ciphertext');
         }
       } else {
-        const publicKeyBytes = body.subarray(0, signatureAlgorithm.publicKeySize);
-        const signature = body.subarray(signatureAlgorithm.publicKeySize);
+        const publicKeyBytes = Buffer.from(submittedFields.publicKey, 'hex');
+        if (publicKeyBytes.byteLength !== signatureAlgorithm.publicKeySize) {
+          throw new Error('Invalid public key size');
+        }
+        const signature = Buffer.from(submittedFields.signature, 'hex');
+        const signedMessage = Buffer.from(submittedFields.signedMessage, 'hex');
         const publicKey = new PQClean.sign.PublicKey(name, publicKeyBytes);
         const ok = await publicKey.verify(challenge.nonce, signature);
         if (!ok) throw new Error('Invalid signature');
+        const message = await publicKey.open(signedMessage);
+        if (!Buffer.from(message).equals(challenge.nonce)) {
+          throw new Error('Invalid signed message');
+        }
       }
 
       if (!challenge.remaining.has(name)) {
