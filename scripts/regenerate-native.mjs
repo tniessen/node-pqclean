@@ -1,4 +1,3 @@
-import assert from 'node:assert';
 import { mkdir, readdir, writeFile } from 'node:fs/promises';
 
 const outDir = 'native/gen';
