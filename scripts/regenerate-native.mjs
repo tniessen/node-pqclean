@@ -113,31 +113,6 @@ namespace sign {
 
 constexpr unsigned int N_ALGORITHMS = ${nSignImpls};
 
-// Some implementations do not provide certain functions as symbols but only as
-// macros with parameters, which we cannot use as function pointers directly.
-namespace {
-${signImpls.map((impl) => `#ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature
-inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature(uint8_t* sig, size_t* siglen, const uint8_t* m, size_t mlen, const uint8_t* sk) {
-  return PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature(sig, siglen, m, mlen, sk);
-}
-#endif
-#ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign
-inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign(uint8_t* sm, size_t* smlen, const uint8_t* m, size_t mlen, const uint8_t* sk) {
-  return PQCLEAN_${id(impl)}_CLEAN_crypto_sign(sm, smlen, m, mlen, sk);
-}
-#endif
-#ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
-inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify(const uint8_t* sig, size_t siglen, const uint8_t* m, size_t mlen, const uint8_t* pk) {
-  return PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify(sig, siglen, m, mlen, pk);
-}
-#endif
-#ifdef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
-inline int _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open(uint8_t* m, size_t* mlen, const uint8_t* sm, size_t smlen, const uint8_t* pk) {
-  return PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open(m, mlen, sm, smlen, pk);
-}
-#endif`).join('\n')}
-}
-
 const std::array<Algorithm, N_ALGORITHMS>& algorithms() {
   static const std::array<Algorithm, N_ALGORITHMS> all = {{
 ${signImpls.map((impl) => `    {
@@ -152,26 +127,10 @@ ${signImpls.map((impl) => `    {
       0,
 #endif
       PQCLEAN_${id(impl)}_CLEAN_crypto_sign_keypair,
-#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature
       PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature,
-#else
-      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_signature,
-#endif
-#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign
       PQCLEAN_${id(impl)}_CLEAN_crypto_sign,
-#else
-      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign,
-#endif
-#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify
       PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify,
-#else
-      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_verify,
-#endif
-#ifndef PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
       PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
-#else
-      _fn_symbol_PQCLEAN_${id(impl)}_CLEAN_crypto_sign_open
-#endif
     },`).join('\n')}
   }};
   return all;
