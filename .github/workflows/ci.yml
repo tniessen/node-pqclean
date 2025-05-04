@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NODE_VERSION: 22.x
-      EMSDK_VERSION: 4.0.7
+      EMSDK_VERSION: 4.0.8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
