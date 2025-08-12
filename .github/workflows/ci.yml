@@ -14,7 +14,7 @@ jobs:
         node-version: [20.x, 22.x, 23.x, 24.x]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
       - name: Set up Node.js ${{matrix.node-version}}
@@ -32,7 +32,7 @@ jobs:
       EMSDK_VERSION: 4.0.9
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
       - name: Set up Node.js ${{env.NODE_VERSION}}
@@ -64,13 +64,13 @@ jobs:
         node-version: [20.x, 22.x, 23.x, 24.x]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Node.js ${{matrix.node-version}}
         uses: actions/setup-node@v4
         with:
           node-version: ${{matrix.node-version}}
       - name: Download WebAssembly module
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: wasm-gen
           path: wasm/gen
@@ -85,13 +85,13 @@ jobs:
       NODE_VERSION: 22.x
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Node.js ${{env.NODE_VERSION}}
         uses: actions/setup-node@v4
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Download WebAssembly module
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: wasm-gen
           path: wasm/gen
@@ -117,7 +117,7 @@ jobs:
       DENO_VERSION: 2.3.x
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
       - name: Set up Node.js ${{env.NODE_VERSION}}
@@ -130,7 +130,7 @@ jobs:
         with:
           deno-version: ${{env.DENO_VERSION}}
       - name: Download web distribution
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: web-dist
           path: web/dist
