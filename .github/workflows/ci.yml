@@ -48,7 +48,7 @@ jobs:
       - name: Build WebAssembly module
         run: npm run build-wasm
       - name: Upload build output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: wasm-gen
           path: |
@@ -98,7 +98,7 @@ jobs:
       - name: Build web distribution
         run: npm run build-web
       - name: Upload build output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: web-dist
           path: |
