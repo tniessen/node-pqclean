@@ -18,7 +18,7 @@ jobs:
         with:
           submodules: true
       - name: Set up Node.js ${{matrix.node-version}}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{matrix.node-version}}
       - name: Build
@@ -36,7 +36,7 @@ jobs:
         with:
           submodules: true
       - name: Set up Node.js ${{env.NODE_VERSION}}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Set up Emscripten SDK ${{env.EMSDK_VERSION}}
@@ -66,7 +66,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Set up Node.js ${{matrix.node-version}}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{matrix.node-version}}
       - name: Download WebAssembly module
@@ -87,7 +87,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
       - name: Set up Node.js ${{env.NODE_VERSION}}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Download WebAssembly module
@@ -121,7 +121,7 @@ jobs:
         with:
           submodules: true
       - name: Set up Node.js ${{env.NODE_VERSION}}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Set up Deno ${{env.DENO_VERSION}}
