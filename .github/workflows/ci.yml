@@ -14,7 +14,7 @@ jobs:
         node-version: [20.x, 22.x, 23.x, 24.x, 25.x]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Set up Node.js ${{matrix.node-version}}
@@ -32,7 +32,7 @@ jobs:
       EMSDK_VERSION: 4.0.18
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Set up Node.js ${{env.NODE_VERSION}}
@@ -64,7 +64,7 @@ jobs:
         node-version: [20.x, 22.x, 23.x, 24.x, 25.x]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Set up Node.js ${{matrix.node-version}}
         uses: actions/setup-node@v6
         with:
@@ -85,7 +85,7 @@ jobs:
       NODE_VERSION: 22.x
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
       - name: Set up Node.js ${{env.NODE_VERSION}}
         uses: actions/setup-node@v6
         with:
@@ -117,7 +117,7 @@ jobs:
       DENO_VERSION: 2.5.x
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           submodules: true
       - name: Set up Node.js ${{env.NODE_VERSION}}
