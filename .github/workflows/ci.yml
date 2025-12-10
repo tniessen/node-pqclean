@@ -70,7 +70,7 @@ jobs:
         with:
           node-version: ${{matrix.node-version}}
       - name: Download WebAssembly module
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: wasm-gen
           path: wasm/gen
@@ -91,7 +91,7 @@ jobs:
         with:
           node-version: ${{env.NODE_VERSION}}
       - name: Download WebAssembly module
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: wasm-gen
           path: wasm/gen
@@ -130,7 +130,7 @@ jobs:
         with:
           deno-version: ${{env.DENO_VERSION}}
       - name: Download web distribution
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: web-dist
           path: web/dist
